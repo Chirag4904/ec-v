@@ -1,6 +1,10 @@
 import argparse
+import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from openpyxl import Workbook, load_workbook
@@ -154,6 +158,24 @@ def get_marked_uids(page) -> set:
         return set()
 
 
+class SharedDestinationCache:
+    def __init__(self):
+        self._data = {}
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            return self._data.get(key)
+
+    def set(self, key, value):
+        with self._lock:
+            self._data[key] = value
+
+    def __len__(self):
+        with self._lock:
+            return len(self._data)
+
+
 class PageResolver:
     """Resolves all CTAs (including nested/drill-down) for a single page."""
 
@@ -169,7 +191,7 @@ class PageResolver:
         # Shared across ALL pages in the run: avoids re-resolving the same
         # destination (nav/footer/social links repeated on every page) with a
         # fresh browser navigation each time.
-        self.destination_cache = destination_cache if destination_cache is not None else {}
+        self.destination_cache = destination_cache if destination_cache is not None else SharedDestinationCache()
         self.verbose = verbose
 
     def run(self):
@@ -328,7 +350,7 @@ class PageResolver:
             if self.verbose:
                 print(f"      resolving: {name[:60]} ...", end=" ", flush=True)
             result = follow_destination(self.context, dest)
-            self.destination_cache[cache_key] = result
+            self.destination_cache.set(cache_key, result)
             if self.verbose:
                 print("failed" if result is None else "ok")
 
@@ -482,19 +504,108 @@ def write_external_domains_sheet(wb, resolved):
     _autosize(ws, headers)
 
 
-def write_workbook(path, resolved, unresolved):
-    wb = Workbook()
-    wb.remove(wb.active)
-    write_resolved_sheet(wb, resolved)
-    write_unresolved_sheet(wb, unresolved)
-    write_external_domains_sheet(wb, resolved)
-    wb.save(path)
-    print(f"  Workbook -> {path}  ({len(resolved)} resolved, {len(unresolved)} unresolved)")
+def _ensure_sheet(wb, name, headers):
+    if name in wb.sheetnames:
+        return wb[name]
+    ws = wb.create_sheet(name)
+    _write_header(ws, headers)
+    return ws
+
+
+def _append_bordered_row(ws, values):
+    ws.append(values)
+    row_num = ws.max_row
+    for c in range(1, len(values) + 1):
+        ws.cell(row=row_num, column=c).border = THIN_BORDER
+    return row_num
+
+
+class ReportWriter:
+    RESOLVED_HEADERS = ["source_url", "cta_name", "cta_assigned_url", "cta_destination", "is_external", "is_redirect", "initial_status", "intermediate_url", "final_status", "resolution_method"]
+    UNRESOLVED_HEADERS = ["source_url", "cta_name", "reason"]
+    EXTERNAL_HEADERS = ["domain", "source", "final_url"]
+    PROGRESS_HEADERS = ["source_url", "status", "resolved_count", "unresolved_count", "updated_at"]
+
+    def __init__(self, path, total_urls):
+        self.path = path
+        self.total_urls = total_urls
+        self.lock = threading.Lock()
+        self.wb = load_workbook(path) if os.path.exists(path) else Workbook()
+        if "Sheet" in self.wb.sheetnames and len(self.wb.sheetnames) == 1 and self.wb["Sheet"]["A1"].value is None:
+            self.wb.remove(self.wb["Sheet"])
+        self.resolved_ws = _ensure_sheet(self.wb, "Resolved CTAs", self.RESOLVED_HEADERS)
+        self.unresolved_ws = _ensure_sheet(self.wb, "Unresolved CTAs", self.UNRESOLVED_HEADERS)
+        self.external_ws = _ensure_sheet(self.wb, "External Domains", self.EXTERNAL_HEADERS)
+        self.progress_ws = _ensure_sheet(self.wb, "Progress", self.PROGRESS_HEADERS)
+        self.completed_urls = {r[0] for r in self.progress_ws.iter_rows(min_row=2, values_only=True) if r and r[0] and r[1] == "done"}
+        self.external_domains = {r[0] for r in self.external_ws.iter_rows(min_row=2, values_only=True) if r and r[0]}
+        self._write_progress_summary()
+        self.wb.save(self.path)
+
+    def _write_progress_summary(self):
+        done = len(self.completed_urls)
+        pct = round((done / self.total_urls) * 100, 2) if self.total_urls else 100.0
+        for cell, value in {"G1": "total_urls", "H1": self.total_urls, "G2": "completed_urls", "H2": done, "G3": "percent_complete", "H3": pct}.items():
+            self.progress_ws[cell] = value
+
+    def append_page(self, source_url, resolved, unresolved):
+        with self.lock:
+            for r in resolved:
+                row_num = _append_bordered_row(self.resolved_ws, [r.get(h, "") for h in self.RESOLVED_HEADERS])
+                self.resolved_ws.cell(row=row_num, column=10).fill = {"static_href": GREEN, "onclick_regex": YELLOW, "click_simulated": ORANGE}.get(r["resolution_method"], GREY)
+                if r["is_external"] == "Y":
+                    self.resolved_ws.cell(row=row_num, column=5).fill = RED
+                if r["is_redirect"] == "Y":
+                    self.resolved_ws.cell(row=row_num, column=6).fill = YELLOW
+                if str(r.get("final_status", "")) != "200":
+                    self.resolved_ws.cell(row=row_num, column=9).fill = RED
+                if r["is_external"] == "Y":
+                    domain = get_host(r["cta_destination"])
+                    if domain not in self.external_domains:
+                        self.external_domains.add(domain)
+                        ext_row = _append_bordered_row(self.external_ws, [domain, r["source_url"], r["cta_destination"]])
+                        fill = BLUE if (self.external_ws.max_row - 2) % 2 == 0 else GREY
+                        for c in range(1, 4):
+                            self.external_ws.cell(row=ext_row, column=c).fill = fill
+            for r in unresolved:
+                row_num = _append_bordered_row(self.unresolved_ws, [r.get(h, "") for h in self.UNRESOLVED_HEADERS])
+                for c in range(1, 4):
+                    self.unresolved_ws.cell(row=row_num, column=c).fill = RED
+            self.progress_ws.append([source_url, "done", len(resolved), len(unresolved), datetime.now().isoformat(timespec="seconds")])
+            self.completed_urls.add(source_url)
+            self._write_progress_summary()
+            self.wb.save(self.path)
 
 
 # ----------------------------------------------------------------------------
 # Entry point
 # ----------------------------------------------------------------------------
+
+
+def process_url(url, origin_host, destination_cache, verbose=False):
+    page_start = time.time()
+    result = {"url": url, "resolved": [], "unresolved": []}
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        page = context.new_page()
+        try:
+            response = page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
+            page.wait_for_timeout(PAGE_LOAD_WAIT_MS)
+            if response is None or response.status != 200:
+                result["unresolved"].append({"source_url": url, "cta_name": "", "reason": "page failed to load"})
+            else:
+                resolver = PageResolver(context, page, url, origin_host, destination_cache=destination_cache, verbose=verbose)
+                resolver.run()
+                result["resolved"] = resolver.resolved
+                result["unresolved"] = resolver.unresolved
+        except Exception as e:
+            result["unresolved"].append({"source_url": url, "cta_name": "", "reason": f"page failed to load: {e}"})
+        finally:
+            context.close()
+            browser.close()
+    result["elapsed"] = round(time.time() - page_start, 1)
+    return result
 
 
 def main():
@@ -503,61 +614,49 @@ def main():
     parser.add_argument("--column", default=None, help="Column name containing URLs (default: auto-detect 'url')")
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N URLs (for testing)")
     parser.add_argument("--out", default="cta_report.xlsx", help="Output workbook path")
+    parser.add_argument("--workers", type=int, default=4, help="Pages to process in parallel")
     args = parser.parse_args()
 
-    urls = load_urls_from_excel(args.excel_file, args.column)
+    all_urls = load_urls_from_excel(args.excel_file, args.column)
     if args.limit:
-        urls = urls[: args.limit]
-    if not urls:
+        all_urls = all_urls[: args.limit]
+    if not all_urls:
         print("No URLs found.")
         return
 
-    origin_host = get_host(urls[0])
-    print(f"\n  Pages to scan: {len(urls)}")
+    origin_host = get_host(all_urls[0])
+    writer = ReportWriter(args.out, len(all_urls))
+    urls = [url for url in all_urls if url not in writer.completed_urls]
+    workers = max(1, args.workers)
+    print(f"\n  Total pages  : {len(all_urls)}")
+    print(f"  Completed    : {len(writer.completed_urls)}")
+    print(f"  Remaining    : {len(urls)}")
+    print(f"  Workers      : {workers}")
     print(f"  Origin host  : {origin_host}\n")
+    if not urls:
+        print("  Nothing left to do.\n")
+        return
 
-    all_resolved, all_unresolved = [], []
-    destination_cache = {}  # shared across every page — this is the key speedup
+    destination_cache = SharedDestinationCache()
     run_start = time.time()
+    done = len(writer.completed_urls)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        page = context.new_page()
-
-        for i, url in enumerate(urls, start=1):
-            page_start = time.time()
-            print(f"  [{i}/{len(urls)}] {url}")
-            try:
-                response = page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
-                page.wait_for_timeout(PAGE_LOAD_WAIT_MS)
-                if response is None or response.status != 200:
-                    all_unresolved.append({"source_url": url, "cta_name": "", "reason": "page failed to load"})
-                    print(f"      page failed to load ({round(time.time() - page_start, 1)}s)")
-                    continue
-            except Exception as e:
-                all_unresolved.append({"source_url": url, "cta_name": "", "reason": f"page failed to load: {e}"})
-                print(f"      page failed to load ({round(time.time() - page_start, 1)}s)")
-                continue
-
-            resolver = PageResolver(context, page, url, origin_host, destination_cache=destination_cache)
-            resolver.run()
-            all_resolved.extend(resolver.resolved)
-            all_unresolved.extend(resolver.unresolved)
-            page_elapsed = round(time.time() - page_start, 1)
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_url, url, origin_host, destination_cache, workers == 1) for url in urls]
+        for future in as_completed(futures):
+            page_result = future.result()
+            writer.append_page(page_result["url"], page_result["resolved"], page_result["unresolved"])
+            done += 1
+            pct = (done / len(all_urls)) * 100
             elapsed_total = round(time.time() - run_start, 1)
-            print(f"      -> {len(resolver.resolved)} resolved, {len(resolver.unresolved)} unresolved "
-                  f"(cache size: {len(destination_cache)})  [page: {page_elapsed}s | total elapsed: {elapsed_total}s]")
-
-        context.close()
-        browser.close()
+            print(f"  [{done}/{len(all_urls)} | {pct:.1f}%] {page_result['url']} -> {len(page_result['resolved'])} resolved, {len(page_result['unresolved'])} unresolved (cache size: {len(destination_cache)}) [page: {page_result['elapsed']}s | total elapsed: {elapsed_total}s]")
 
     total_elapsed = time.time() - run_start
     mins, secs = divmod(total_elapsed, 60)
     hrs, mins = divmod(mins, 60)
-    print(f"\n  Total: {len(all_resolved)} resolved, {len(all_unresolved)} unresolved")
+    print(f"\n  Total: {writer.resolved_ws.max_row - 1} resolved, {writer.unresolved_ws.max_row - 1} unresolved")
     print(f"  Time taken: {int(hrs)}h {int(mins)}m {round(secs, 1)}s  ({round(total_elapsed, 1)}s total)")
-    write_workbook(args.out, all_resolved, all_unresolved)
+    print(f"  Workbook -> {args.out}")
     print("  Done.\n")
 
 
