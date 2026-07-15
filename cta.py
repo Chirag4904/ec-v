@@ -1,8 +1,10 @@
 import argparse
 import os
 import re
+import shutil
 import threading
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -608,14 +610,162 @@ def process_url(url, origin_host, destination_cache, verbose=False):
     return result
 
 
+def _parse_status(value):
+    try:
+        if value is None or value == "":
+            return None
+        return int(str(value).strip())
+    except Exception:
+        return None
+
+
+def _backup_file(path):
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = f"{path}.bak.{stamp}"
+    shutil.copyfile(path, backup_path)
+    return backup_path
+
+
+def _header_index_map(ws):
+    header = [c.value for c in ws[1]]
+    header_norm = [str(h).strip() if h is not None else "" for h in header]
+    return {name: idx + 1 for idx, name in enumerate(header_norm) if name}
+
+
+def rerun_failed_report(report_path, out_path, status_threshold):
+    try:
+        wb = load_workbook(report_path)
+    except zipfile.BadZipFile:
+        print(f"Report workbook is not a valid .xlsx: {report_path}")
+        return 1
+
+    if "Resolved CTAs" not in wb.sheetnames:
+        print("Report workbook missing 'Resolved CTAs' sheet.")
+        return 1
+
+    ws = wb["Resolved CTAs"]
+    idx = _header_index_map(ws)
+    required = ["source_url", "cta_assigned_url", "cta_destination", "is_external", "is_redirect", "initial_status", "intermediate_url", "final_status"]
+    missing = [c for c in required if c not in idx]
+    if missing:
+        print(f"Report workbook missing columns in 'Resolved CTAs': {missing}")
+        return 1
+
+    candidates = []
+    for row_num in range(2, ws.max_row + 1):
+        final_status = _parse_status(ws.cell(row=row_num, column=idx["final_status"]).value)
+        if final_status is None or final_status < status_threshold:
+            continue
+        assigned = ws.cell(row=row_num, column=idx["cta_assigned_url"]).value
+        source = ws.cell(row=row_num, column=idx["source_url"]).value
+        if not assigned or not source:
+            continue
+        candidates.append({
+            "row_num": row_num,
+            "source_url": str(source).strip(),
+            "cta_assigned_url": str(assigned).strip(),
+            "old_final_status": final_status,
+            "old_destination": ws.cell(row=row_num, column=idx["cta_destination"]).value,
+        })
+
+    print(f"\n  Rerun failed mode")
+    print(f"  Report       : {report_path}")
+    print(f"  Threshold    : {status_threshold}+")
+    print(f"  Candidates   : {len(candidates)}\n")
+    if not candidates:
+        print("  Nothing to rerun.\n")
+        return 0
+
+    destination_cache = SharedDestinationCache()
+    updated_rows = 0
+    updated_urls = set()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        try:
+            for i, item in enumerate(candidates, start=1):
+                result = follow_destination(context, item["cta_assigned_url"])
+                if result is None:
+                    continue
+
+                final = result["final_destination"]
+                source_host = get_host(item["source_url"])
+                is_external = "Y" if get_host(final) != source_host else "N"
+
+                new_final_status = _parse_status(result.get("final_status"))
+                changed = False
+
+                def _set(col, value):
+                    nonlocal changed
+                    cell = ws.cell(row=item["row_num"], column=idx[col])
+                    old = cell.value
+                    cell.value = value
+                    if old != value:
+                        changed = True
+
+                _set("cta_destination", final)
+                _set("is_external", is_external)
+                _set("is_redirect", result["is_redirect"])
+                _set("initial_status", result["initial_status"])
+                _set("intermediate_url", result["intermediate_url"])
+                _set("final_status", result["final_status"])
+
+                if is_external == "Y":
+                    ws.cell(row=item["row_num"], column=idx["is_external"]).fill = RED
+                else:
+                    ws.cell(row=item["row_num"], column=idx["is_external"]).fill = GREY
+
+                if result["is_redirect"] == "Y":
+                    ws.cell(row=item["row_num"], column=idx["is_redirect"]).fill = YELLOW
+                else:
+                    ws.cell(row=item["row_num"], column=idx["is_redirect"]).fill = GREY
+
+                if new_final_status is not None and new_final_status != 200:
+                    ws.cell(row=item["row_num"], column=idx["final_status"]).fill = RED
+                else:
+                    ws.cell(row=item["row_num"], column=idx["final_status"]).fill = GREY
+
+                if changed:
+                    updated_rows += 1
+                    updated_urls.add(item["source_url"])
+
+                pct = (i / len(candidates)) * 100
+                print(f"  [{i}/{len(candidates)} | {pct:.1f}%] row {item['row_num']} -> {item['old_final_status']} -> {result['final_status']}")
+        finally:
+            context.close()
+            browser.close()
+
+    if out_path == report_path:
+        backup_path = _backup_file(report_path)
+        print(f"\n  Backup       : {backup_path}")
+
+    wb.save(out_path)
+    print(f"\n  Updated rows : {updated_rows}")
+    print(f"  Updated URLs : {len(updated_urls)}")
+    print(f"  Output       : {out_path}\n")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Resolve CTA destinations for a list of URLs from an Excel file.")
-    parser.add_argument("excel_file", help="Path to the .xlsx containing URLs")
+    parser.add_argument("excel_file", nargs="?", default=None, help="Path to the .xlsx containing URLs")
     parser.add_argument("--column", default=None, help="Column name containing URLs (default: auto-detect 'url')")
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N URLs (for testing)")
     parser.add_argument("--out", default="cta_report.xlsx", help="Output workbook path")
     parser.add_argument("--workers", type=int, default=4, help="Pages to process in parallel")
+    parser.add_argument("--rerun-report", default=None, help="Path to an existing CTA report .xlsx; reruns rows with final_status >= threshold")
+    parser.add_argument("--rerun-threshold", type=int, default=400, help="Status threshold for rerun-report mode (default: 400)")
     args = parser.parse_args()
+
+    if args.rerun_report:
+        out_path = args.out or args.rerun_report
+        return_code = rerun_failed_report(args.rerun_report, out_path, args.rerun_threshold)
+        raise SystemExit(return_code)
+
+    if not args.excel_file:
+        print("excel_file is required unless --rerun-report is used")
+        raise SystemExit(2)
 
     all_urls = load_urls_from_excel(args.excel_file, args.column)
     if args.limit:
