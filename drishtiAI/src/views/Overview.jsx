@@ -10,12 +10,15 @@ import { pillarCardFromApi as painPointsCardFromApi } from '../data/painPointsAd
 import { pillarCardFromApi as sentimentCardFromApi } from '../data/sentimentAdapter.js'
 import { pillarCardFromApi as srVolumeCardFromApi } from '../data/srVolumeAdapter.js'
 import { pillarCardFromApi as forecastCardFromApi } from '../data/forecastAdapter.js'
+import { useDashboardFilters } from '../context/DashboardFiltersContext.jsx'
 
 export default function Overview({ onOpenDrill, onGoDeep, onAskAI }) {
+  const { filters } = useDashboardFilters()
   const [cards, setCards] = useState(() => Array(PILLAR_CARDS.length).fill(null))
 
   useEffect(() => {
     let cancelled = false
+    setCards(Array(PILLAR_CARDS.length).fill(null))
 
     // Sequential, not Promise.all/parallel — if 4 simultaneous queries were
     // overwhelming the Databricks SQL warehouse (a real possibility on a
@@ -29,7 +32,7 @@ export default function Overview({ onOpenDrill, onGoDeep, onAskAI }) {
 
     async function loadCard(index, fetcher, adapter, label) {
       try {
-        const data = await fetcher()
+        const data = await fetcher(filters)
         if (cancelled) return
         const liveCard = adapter(data)
         if (!liveCard) throw new Error('Adapter returned no card')
@@ -50,7 +53,7 @@ export default function Overview({ onOpenDrill, onGoDeep, onAskAI }) {
 
     loadAll()
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   return (
     <section className="view-enter max-w-[1280px] mx-auto px-[30px] pb-[70px]">

@@ -1,5 +1,17 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
 
+function withDashboardFilters(path, filters) {
+  if (!filters) return path
+
+  const params = new URLSearchParams()
+  if (filters.product_category) params.set('product_category', filters.product_category)
+  if (filters.region) params.set('region', filters.region)
+
+  const qs = params.toString()
+  if (!qs) return path
+  return `${path}?${qs}`
+}
+
 async function getJson(path, { timeoutMs = 90_000 } = {}) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -7,9 +19,6 @@ async function getJson(path, { timeoutMs = 90_000 } = {}) {
   let res
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
-      // Forces a real network round-trip every time — without this, the
-      // browser can serve a cached 304 (no body) for a plain GET, which
-      // either throws confusingly or hangs depending on the browser.
       cache: 'no-store',
       signal: controller.signal,
     })
@@ -31,42 +40,38 @@ async function getJson(path, { timeoutMs = 90_000 } = {}) {
   return body.data
 }
 
-export function fetchTopKpis() {
-  return getJson('/api/dashboard/top-kpis') // shape produced by mapTopKpis() on the backend
+export function fetchTopKpis(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/top-kpis', filters))
 }
 
-export function fetchPriorityAreas() {
-  return getJson('/api/dashboard/priority-areas') // raw Databricks rows — shaped client-side, see priorityAreasAdapter.js
+export function fetchPriorityAreas(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/priority-areas', filters))
 }
 
-export function fetchPainPointsAi() {
-  return getJson('/api/dashboard/pain-points-ai') // single-row AI-generated pillar payload — see painPointsAdapter.js
+export function fetchPainPointsAi(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/pain-points-ai', filters))
 }
 
-export function fetchSentimentAi() {
-  return getJson('/api/dashboard/sentiment-ai') // single-row AI-generated pillar payload — see sentimentAdapter.js
+export function fetchSentimentAi(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/sentiment-ai', filters))
 }
 
-export function fetchSrVolumeAi() {
-  return getJson('/api/dashboard/sr-volume-ai') // single-row AI-generated pillar payload — see srVolumeAdapter.js
+export function fetchSrVolumeAi(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/sr-volume-ai', filters))
 }
 
-export function fetchForecastAi() {
-  return getJson('/api/dashboard/forecast-ai') // single-row AI-generated pillar payload — see forecastAdapter.js
+export function fetchForecastAi(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/forecast-ai', filters))
 }
 
-export function fetchEarlyWarningFeed() {
-  return getJson('/api/dashboard/early-warning-feed') // live rows for SignalLog.jsx
+export function fetchEarlyWarningFeed(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/early-warning-feed', filters))
 }
 
-export function fetchRecommendedActions() {
-  return getJson('/api/dashboard/recommended-actions') // live rows for RecommendedActions.jsx
+export function fetchRecommendedActions(filters) {
+  return getJson(withDashboardFilters('/api/dashboard/recommended-actions', filters))
 }
 
-// Generic per-item drill-down detail — same shape regardless of which
-// pillar the highlight belongs to (card_key distinguishes them). Called
-// with the full detailApiPath a bucket/chip already carries, e.g.
-// "/api/dashboard/ai-highlights/forecast_8eafec7dd6c2435ba5fc6dc6".
 export function fetchHighlightDetail(path) {
   return getJson(path)
 }

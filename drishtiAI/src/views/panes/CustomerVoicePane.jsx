@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plaque, ReportSection, ReportText, RecList, ChatCTA, NextLink, CompareRow } from './shared.jsx'
 import { fetchSentimentAi } from '../../data/api.js'
 import { sentimentDetailFromApi } from '../../data/sentimentAdapter.js'
+import { useDashboardFilters } from '../../context/DashboardFiltersContext.jsx'
 
 const MOCK = {
   plaqueHeadline: 'Customer sentiment is holding steady nationally, but Delhi NCR is pulling satisfaction down faster than anywhere else this month — the same pattern showing up in both NPS and CSAT.',
@@ -31,12 +32,15 @@ const MOCK = {
 const DIST_COLOR = { Dissatisfied: '#E1793B', Neutral: '#F5B942', Satisfied: '#3FE0B5', Pune: '#3FE0B5', Bangalore: '#3FE0B5', Kolkata: '#F5B942', 'Delhi NCR': '#E1793B' }
 
 export default function CustomerVoicePane({ onNext, onAskAI }) {
+  const { filters } = useDashboardFilters()
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchSentimentAi()
+    setD(null)
+    setError(null)
+    fetchSentimentAi(filters)
       .then((data) => {
         if (cancelled) return
         const detail = sentimentDetailFromApi(data)
@@ -50,7 +54,7 @@ export default function CustomerVoicePane({ onNext, onAskAI }) {
         setD(MOCK)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   if (!d) {
     return (

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { TooltipProvider } from './context/TooltipContext.jsx'
+import { DashboardFiltersProvider } from './context/DashboardFiltersContext.jsx'
 import TopBar from './components/TopBar.jsx'
 import Rail from './components/Rail.jsx'
 import FilterStrip from './components/FilterStrip.jsx'
@@ -63,7 +64,8 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col min-h-screen">
+      <DashboardFiltersProvider>
+        <div className="flex flex-col min-h-screen">
         <TopBar activeFn={activeFn} onSetFn={handleSetFn} />
 
         <div className="flex flex-1 min-h-0">
@@ -111,6 +113,7 @@ export default function App() {
           onGoDeep={handleGoDeep}
         />
       </div>
+      </DashboardFiltersProvider>
     </TooltipProvider>
   )
 }

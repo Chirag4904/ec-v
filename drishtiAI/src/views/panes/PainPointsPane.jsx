@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plaque, ReportSection, ReportText, RecList, ChatCTA, NextLink, CompareRow } from './shared.jsx'
 import { fetchPainPointsAi } from '../../data/api.js'
 import { painPointsDetailFromApi } from '../../data/painPointsAdapter.js'
+import { useDashboardFilters } from '../../context/DashboardFiltersContext.jsx'
 
 const MOCK = {
   plaqueHeadline: 'Water Heaters are generating more installation-related complaints than any other product this month, and the gap is widening — the same pattern is now showing up as the fastest month-over-month growth of any product line.',
@@ -30,12 +31,15 @@ const MOCK = {
 }
 
 export default function PainPointsPane({ onNext, onAskAI }) {
+  const { filters } = useDashboardFilters()
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchPainPointsAi()
+    setD(null)
+    setError(null)
+    fetchPainPointsAi(filters)
       .then((data) => {
         if (cancelled) return
         const detail = painPointsDetailFromApi(data)
@@ -49,7 +53,7 @@ export default function PainPointsPane({ onNext, onAskAI }) {
         setD(MOCK)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   if (!d) {
     return (

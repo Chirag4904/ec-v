@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { PRIORITY_AREAS as MOCK_PRIORITY_AREAS } from '../data/dashboardData.js'
 import { fetchPriorityAreas } from '../data/api.js'
 import { priorityAreasFromApi } from '../data/priorityAreasAdapter.js'
+import { useDashboardFilters } from '../context/DashboardFiltersContext.jsx'
 
 const badgeClass = {
   crit: 'bg-red/[.15] text-red',
@@ -10,12 +11,15 @@ const badgeClass = {
 }
 
 export default function PriorityAreas({ onGoDeep }) {
+  const { filters } = useDashboardFilters()
   const [rows, setRows] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchPriorityAreas()
+    setRows(null)
+    setError(null)
+    fetchPriorityAreas(filters)
       .then((data) => {
         if (cancelled) return
         setRows(priorityAreasFromApi(data))
@@ -27,7 +31,7 @@ export default function PriorityAreas({ onGoDeep }) {
         setRows(MOCK_PRIORITY_AREAS)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   return (
     <div className="bg-panel border border-line rounded-xl shadow-card px-5 py-[18px]">
@@ -51,8 +55,11 @@ export default function PriorityAreas({ onGoDeep }) {
           >
             <span className="font-mono text-[11px] font-semibold text-inkfaint pt-0.5">{row.rank}</span>
             <div className="min-w-0">
-              <div className="font-sans text-xs text-ink group-hover:text-teal transition-colors">{row.name}</div>
-              <div className="font-mono text-[10px] text-inkfaint mt-1">{row.subtitle}</div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-sans text-xs text-ink group-hover:text-teal transition-colors">{row.name}</span>
+                <span className="font-mono text-[10px] text-inkfaint">•</span>
+                <span className="font-mono text-[10px] text-inkfaint">{row.subtitle}</span>
+              </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 font-mono text-[10.5px] text-inksoft">
                 <span>{row.complaintCount} complaints</span>
                 <span>{row.share}</span>

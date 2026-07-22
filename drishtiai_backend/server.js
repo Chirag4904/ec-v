@@ -131,6 +131,23 @@ async function fetchView(viewName) {
   return runStatement(`SELECT * FROM ${viewName}`);
 }
 
+function escapeSqlString(value) {
+  return String(value).replace(/'/g, "''");
+}
+
+async function fetchFilteredView(
+  viewName,
+  productCategory = "ALL",
+  region = "ALL",
+) {
+  const safeProductCategory = escapeSqlString(productCategory || "ALL");
+  const safeRegion = escapeSqlString(region || "ALL");
+
+  return runStatement(
+    `SELECT * FROM ${viewName} WHERE product_category='${safeProductCategory}' AND region='${safeRegion}'`,
+  );
+}
+
 // Highlight IDs look like "forecast_8eafec7dd6c2435ba5fc6dc6" — letters,
 // digits, underscores only. Validated before going anywhere near a SQL
 // string so this can't be used to inject arbitrary SQL through the URL.
@@ -175,11 +192,14 @@ app.get("/health", (req, res) => {
 app.get("/api/dashboard/top-kpis", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    const rows = await fetchView(TOP_KPI_VIEW);
+    const productCategory = "ALL";
+    const region = "ALL";
+    const view = "havellslakehouse_dev.bronze.eucloid_v2_vw_ui_top_kpis";
+    const rows = await fetchView(view);
 
     return res.json({
       success: true,
-      data: mapTopKpis(rows), // was `data: rows` — now shaped for the frontend
+      data: mapTopKpis(rows),
     });
   } catch (error) {
     console.error("Top KPI request failed:", error);
@@ -193,7 +213,13 @@ app.get("/api/dashboard/top-kpis", async (req, res) => {
 
 app.get("/api/dashboard/priority-areas", async (req, res) => {
   try {
-    const rows = await fetchView(PRIORITY_AREAS_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      PRIORITY_AREAS_VIEW,
+      productCategory,
+      region,
+    );
 
     return res.json({
       success: true,
@@ -212,7 +238,13 @@ app.get("/api/dashboard/priority-areas", async (req, res) => {
 
 app.get("/api/dashboard/pain-points-ai", async (req, res) => {
   try {
-    const rows = await fetchView(PAIN_POINTS_AI_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      PAIN_POINTS_AI_VIEW,
+      productCategory,
+      region,
+    );
 
     if (!rows.length) {
       return res.status(404).json({
@@ -238,7 +270,13 @@ app.get("/api/dashboard/pain-points-ai", async (req, res) => {
 
 app.get("/api/dashboard/sentiment-ai", async (req, res) => {
   try {
-    const rows = await fetchView(SENTIMENT_AI_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      SENTIMENT_AI_VIEW,
+      productCategory,
+      region,
+    );
 
     if (!rows.length) {
       return res.status(404).json({
@@ -264,7 +302,13 @@ app.get("/api/dashboard/sentiment-ai", async (req, res) => {
 
 app.get("/api/dashboard/sr-volume-ai", async (req, res) => {
   try {
-    const rows = await fetchView(SR_VOLUME_AI_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      SR_VOLUME_AI_VIEW,
+      productCategory,
+      region,
+    );
 
     if (!rows.length) {
       return res.status(404).json({
@@ -285,7 +329,7 @@ app.get("/api/dashboard/sr-volume-ai", async (req, res) => {
   } catch (error) {
     console.error("SR Volume AI request failed:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       error: error.message,
     });
@@ -294,7 +338,13 @@ app.get("/api/dashboard/sr-volume-ai", async (req, res) => {
 
 app.get("/api/dashboard/forecast-ai", async (req, res) => {
   try {
-    const rows = await fetchView(FORECAST_AI_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      FORECAST_AI_VIEW,
+      productCategory,
+      region,
+    );
 
     if (!rows.length) {
       return res.status(404).json({
@@ -321,7 +371,7 @@ app.get("/api/dashboard/forecast-ai", async (req, res) => {
   } catch (error) {
     console.error("Forecast AI request failed:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       error: error.message,
     });
@@ -330,7 +380,13 @@ app.get("/api/dashboard/forecast-ai", async (req, res) => {
 
 app.get("/api/dashboard/recommended-actions", async (req, res) => {
   try {
-    const rows = await fetchView(RECOMMENDED_ACTIONS_VIEW);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(
+      RECOMMENDED_ACTIONS_VIEW,
+      productCategory,
+      region,
+    );
 
     return res.json({
       success: true,
@@ -340,7 +396,7 @@ app.get("/api/dashboard/recommended-actions", async (req, res) => {
   } catch (error) {
     console.error("Recommended Actions request failed:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       error: error.message,
     });

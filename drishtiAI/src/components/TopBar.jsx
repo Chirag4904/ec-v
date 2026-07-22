@@ -20,6 +20,7 @@ export default function TopBar({ activeFn, onSetFn }) {
         </div>
       </div>
 
+      {/*
       <div className="flex items-center gap-[22px]">
         {['Brand', 'Product', 'Service'].map((label) => {
           const active = activeFn === label
@@ -51,6 +52,7 @@ export default function TopBar({ activeFn, onSetFn }) {
           )
         })}
       </div>
+      */}
 
       <div className="flex items-center gap-4">
         <span className="flex items-center gap-1.5 font-mono text-[10.5px] font-medium text-inksoft">

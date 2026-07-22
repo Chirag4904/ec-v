@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plaque, ReportSection, ReportText, RecList, ChatCTA, NextLink, CompareRow } from './shared.jsx'
 import { fetchSrVolumeAi } from '../../data/api.js'
 import { srVolumeDetailFromApi } from '../../data/srVolumeAdapter.js'
+import { useDashboardFilters } from '../../context/DashboardFiltersContext.jsx'
 
 const MOCK = {
   plaqueHeadline: 'North region is generating more service work orders than any other region right now, and the gap is growing week over week as the pre-monsoon demand shift begins.',
@@ -29,12 +30,15 @@ const MOCK = {
 }
 
 export default function SrVolumePane({ onNext, onAskAI }) {
+  const { filters } = useDashboardFilters()
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchSrVolumeAi()
+    setD(null)
+    setError(null)
+    fetchSrVolumeAi(filters)
       .then((data) => {
         if (cancelled) return
         const detail = srVolumeDetailFromApi(data)
@@ -48,7 +52,7 @@ export default function SrVolumePane({ onNext, onAskAI }) {
         setD(MOCK)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   if (!d) {
     return (

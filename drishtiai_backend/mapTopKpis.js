@@ -46,6 +46,11 @@ function toIntOrNull(v) {
   return isNaN(n) ? null : n
 }
 
+function footerTextOrFallback(row, fallback = '') {
+  if (!row?.footer_text) return fallback
+  return String(row.footer_text)
+}
+
 function mapTopKpis(rows) {
   const nps = byMetricName(rows, 'Service NPS')
   const tat = byMetricName(rows, 'Average Resolution TAT')
@@ -59,44 +64,47 @@ function mapTopKpis(rows) {
     // standard NPS. Keep the warning until there's a real NPS source.
     serviceNps: nps
       ? {
-          rawValue: parseFloat(nps.metric_value), // now 0-10 scale
-          rawUnit: nps.unit, // "SCORE_0_TO_10"
-          delta: formatDelta(nps),
-          ctx: `${toLakh(parseFloat(nps.denominator_value))} responses`, // no target available
-          warning: 'metric_value is a 1-5 satisfaction score scaled x2 for display \u2014 not standard NPS, do not present as-is on the NPS gauge',
-        }
+        rawValue: parseFloat(nps.metric_value), // now 0-10 scale
+        rawUnit: nps.unit, // "SCORE_0_TO_10"
+        delta: formatDelta(nps),
+        ctx: footerTextOrFallback(nps, `${toLakh(parseFloat(nps.denominator_value))} responses`),
+        warning: 'metric_value is a 1-5 satisfaction score scaled x2 for display \u2014 not standard NPS, do not present as-is on the NPS gauge',
+      }
       : null,
 
     avgTat: tat
       ? {
-          value: Math.round(parseFloat(tat.metric_value) * 10) / 10, // hours
-          delta: formatDelta(tat),
-          ctx: TARGETS['Average Resolution TAT']
-            ? `target ${TARGETS['Average Resolution TAT']} hrs` // per-product breakdown ("water heaters 26 hrs") needs a second filtered query, not in this view
+        value: Math.round(parseFloat(tat.metric_value) * 10) / 10, // hours
+        delta: formatDelta(tat),
+        ctx: footerTextOrFallback(
+          tat,
+          TARGETS['Average Resolution TAT']
+            ? `target ${TARGETS['Average Resolution TAT']} hrs`
             : '',
-        }
+        ),
+      }
       : null,
 
     ticketVolume: tickets
       ? {
-          value: Math.round(parseFloat(tickets.metric_value)), // now total volume, not just open/backlog
-          delta: formatDelta(tickets),
-          ctx: '18 cities \u00b7 closed, cancelled & open',
-          breakdown: [
-            { label: 'Closed', value: toIntOrNull(tickets.closed_ticket_count)?.toLocaleString() ?? '\u2014' },
-            { label: 'Open', value: toIntOrNull(tickets.open_ticket_count)?.toLocaleString() ?? '\u2014' },
-            { label: 'Cancelled', value: toIntOrNull(tickets.cancelled_ticket_count)?.toLocaleString() ?? '\u2014' },
-          ],
-        }
+        value: Math.round(parseFloat(tickets.metric_value)), // now total volume, not just open/backlog
+        delta: formatDelta(tickets),
+        ctx: footerTextOrFallback(tickets, '18 cities \u00b7 closed, cancelled & open'),
+        breakdown: [
+          { label: 'Closed', value: toIntOrNull(tickets.closed_ticket_count)?.toLocaleString() ?? '\u2014' },
+          { label: 'Open', value: toIntOrNull(tickets.open_ticket_count)?.toLocaleString() ?? '\u2014' },
+          { label: 'Cancelled', value: toIntOrNull(tickets.cancelled_ticket_count)?.toLocaleString() ?? '\u2014' },
+        ],
+      }
       : null,
 
     painIndex: pain
       ? {
-          value: Math.round(parseFloat(pain.metric_value)),
-          delta: formatDelta(pain),
-          label: painIndexLabel(parseFloat(pain.metric_value)),
-          ctx: '0\u2013100 composite \u00b7 updated daily',
-        }
+        value: Math.round(parseFloat(pain.metric_value)),
+        delta: formatDelta(pain),
+        label: painIndexLabel(parseFloat(pain.metric_value)),
+        ctx: footerTextOrFallback(pain, '0\u2013100 composite \u00b7 updated daily'),
+      }
       : null,
   }
 }

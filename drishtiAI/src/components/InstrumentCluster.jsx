@@ -3,6 +3,7 @@ import { GAUGES as MOCK_GAUGES } from '../data/dashboardData.js'
 import { fetchTopKpis } from '../data/api.js'
 import { gaugesFromApi } from '../data/kpiAdapter.js'
 import { useTooltip } from '../context/TooltipContext.jsx'
+import { useDashboardFilters } from '../context/DashboardFiltersContext.jsx'
 
 function polarArc(pct) {
   const cx = 80, cy = 88, r = 66
@@ -70,14 +71,16 @@ function Gauge({ g, delay }) {
 }
 
 export default function InstrumentCluster() {
+  const { filters } = useDashboardFilters()
   const [gauges, setGauges] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchTopKpis()
+    setGauges(null)
+    setError(null)
+    fetchTopKpis(filters)
       .then((data) => {
-        // console.log('fetched live KPIs', data)
         if (cancelled) return
         setGauges(gaugesFromApi(data))
       })
@@ -88,7 +91,7 @@ export default function InstrumentCluster() {
         setGauges(MOCK_GAUGES)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   return (
     <div className="bg-panel border border-line rounded-xl shadow-card relative pt-[16px] px-6 pb-3.5 mb-2">

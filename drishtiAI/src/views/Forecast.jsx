@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ReportSection, ReportText, RecList, ChatCTA, CompareRow } from './panes/shared.jsx'
 import { fetchForecastAi } from '../data/api.js'
 import { forecastPageFromApi } from '../data/forecastAdapter.js'
+import { useDashboardFilters } from '../context/DashboardFiltersContext.jsx'
 
 function fmt(n) {
   if (n == null) return '\u2014'
@@ -17,19 +18,17 @@ function titleCase(s) {
 }
 
 export default function Forecast({ onGoDeep, onAskAI }) {
+  const { filters } = useDashboardFilters()
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let cancelled = false
-    fetchForecastAi()
+    setD(null)
+    setError(null)
+    fetchForecastAi(filters)
       .then((data) => {
         if (cancelled) return
-        // was forecastPageFromApi(data, data?.chartData) — that second arg
-        // could never resolve to anything, since fetchForecastAi() only
-        // returns body.data, not the chartData field that sits alongside
-        // it in the raw response. The adapter now reads directly off `data`
-        // (monthly_chart_json / monthly_forecast_json live inside it too).
         const page = forecastPageFromApi(data)
         if (!page) throw new Error('Forecast AI response was empty')
         setD(page)
@@ -40,7 +39,7 @@ export default function Forecast({ onGoDeep, onAskAI }) {
         setError(err.message)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [filters.product_category, filters.region])
 
   if (error) {
     return (
