@@ -4,6 +4,7 @@ import { SparkChart, MiniBars, confWord, corrColor, corrWord } from './DrillChar
 import { fetchHighlightDetail } from '../data/api.js'
 import { highlightDetailFromApi } from '../data/highlightAdapter.js'
 import { seriesToPath } from '../data/chartPath.js'
+import { useDashboardFilters } from '../context/DashboardFiltersContext.jsx'
 
 function RealTrendChart({ values, color, format = 'number' }) {
   const safeValues = values.filter(Number.isFinite)
@@ -90,6 +91,7 @@ function MetricTile({ label, value, tone = 'text-ink' }) {
 }
 
 export default function DrillModal({ open, pillarIndex, drillKey, detailApiPath, onClose, onGoDeep }) {
+  const { filters } = useDashboardFilters()
   const [realData, setRealData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [fetchError, setFetchError] = useState(null)
@@ -102,7 +104,8 @@ export default function DrillModal({ open, pillarIndex, drillKey, detailApiPath,
     }
     let cancelled = false
     setLoading(true)
-    fetchHighlightDetail(detailApiPath)
+    setFetchError(null)
+    fetchHighlightDetail(detailApiPath, filters)
       .then((row) => {
         if (cancelled) return
         setRealData(highlightDetailFromApi(row))
@@ -114,7 +117,7 @@ export default function DrillModal({ open, pillarIndex, drillKey, detailApiPath,
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [open, detailApiPath])
+  }, [open, detailApiPath, filters.product_category, filters.region])
 
   if (!open || pillarIndex == null || (!drillKey && !detailApiPath)) return null
 

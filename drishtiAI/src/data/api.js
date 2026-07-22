@@ -3,13 +3,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 function withDashboardFilters(path, filters) {
   if (!filters) return path
 
-  const params = new URLSearchParams()
+  const [basePath, existingQuery = ''] = path.split('?')
+  const params = new URLSearchParams(existingQuery)
   if (filters.product_category) params.set('product_category', filters.product_category)
   if (filters.region) params.set('region', filters.region)
 
   const qs = params.toString()
-  if (!qs) return path
-  return `${path}?${qs}`
+  return qs ? `${basePath}?${qs}` : basePath
 }
 
 async function getJson(path, { timeoutMs = 90_000 } = {}) {
@@ -72,6 +72,6 @@ export function fetchRecommendedActions(filters) {
   return getJson(withDashboardFilters('/api/dashboard/recommended-actions', filters))
 }
 
-export function fetchHighlightDetail(path) {
-  return getJson(path)
+export function fetchHighlightDetail(path, filters) {
+  return getJson(withDashboardFilters(path, filters))
 }

@@ -153,14 +153,22 @@ async function fetchFilteredView(
 // string so this can't be used to inject arbitrary SQL through the URL.
 const HIGHLIGHT_ID_PATTERN = /^[a-zA-Z0-9_]+$/;
 
-async function fetchViewByHighlightId(viewName, highlightId) {
+function getDashboardFilters(query = {}) {
+  return {
+    productCategory: query.product_category || "ALL",
+    region: query.region || "ALL",
+  };
+}
+
+async function fetchFilteredViewByHighlightId(viewName, highlightId, query = {}) {
   if (!HIGHLIGHT_ID_PATTERN.test(highlightId)) {
     const err = new Error("Invalid highlight id");
     err.statusCode = 400;
     throw err;
   }
+  const { productCategory, region } = getDashboardFilters(query);
   return runStatement(
-    `SELECT * FROM ${viewName} WHERE highlight_id = '${highlightId}'`,
+    `SELECT * FROM ${viewName} WHERE highlight_id = '${escapeSqlString(highlightId)}' AND product_category='${escapeSqlString(productCategory)}' AND region='${escapeSqlString(region)}'`,
   );
 }
 
@@ -428,11 +436,13 @@ app.get("/api/dashboard/early-warning-feed", async (req, res) => {
 app.get("/api/dashboard/ai-highlights/:highlightId", async (req, res) => {
   console.log("AI Highlight detail request for id:", req.params.highlightId);
   console.log("AI Highlight view:", AI_HIGHLIGHTS_VIEW);
+  console.log("AI Highlight filters:", req.query);
   res.setHeader("Cache-Control", "no-store");
   try {
-    const rows = await fetchViewByHighlightId(
+    const rows = await fetchFilteredViewByHighlightId(
       AI_HIGHLIGHTS_VIEW,
       req.params.highlightId,
+      req.query,
     );
 
     if (!rows.length) {
