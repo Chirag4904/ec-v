@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Drishti — Signal Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E0C;
+  --panel:#121712;
+  --panel-2:#171D18;
+  --panel-3:#1D2420;
+  --line:rgba(255,255,255,.08);
+  --shadow-card:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
+  --shadow-card-hover:0 2px 4px rgba(0,0,0,.35), 0 16px 40px -10px rgba(0,0,0,.6);
+  --line-bright:rgba(255,255,255,.16);
+  --ink:#ECEFE9;
+  --ink-soft:#96A199;
+  --ink-faint:#57625B;
+  --copper:#E1793B;
+  --copper-dim:#8A4B26;
+  --copper-glow:rgba(225,121,59,.45);
+  --copper-soft:rgba(225,121,59,.12);
+  --teal:#3FE0B5;
+  --teal-soft:rgba(63,224,181,.12);
+  --teal-glow:rgba(63,224,181,.5);
+  --amber:#F5B942;
+  --amber-soft:rgba(245,185,66,.12);
+  --red:#FF6259;
+  --indigo:#7C8CF5;
+  --radius:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans',sans-serif;
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(225,121,59,.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(63,224,181,.05), transparent 60%),
+    radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1px) 0 0/22px 22px,
+    var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--copper-soft);color:var(--copper)}
+:focus-visible{outline:1.5px solid var(--teal);outline-offset:2px}
+.disp{font-family:'Space Grotesk',sans-serif}
+.mono{font-family:'IBM Plex Mono',monospace}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+
+/* faint etched screw / rivet, used sparingly on panel corners */
+.rivet{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.10);box-shadow:inset 0 1px 1px rgba(0,0,0,.6)}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes led-pulse{0%,100%{opacity:1;filter:drop-shadow(0 0 4px currentColor)}50%{opacity:.55;filter:drop-shadow(0 0 1px currentColor)}}
+.led-live{animation:led-pulse 2.2s ease-in-out infinite}
+@keyframes caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+/* ============ LOGO MARK ANIMATION ============ */
+@keyframes mark-spin{ to { transform: rotate(360deg); } }
+.mark-ring{
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: mark-spin 5s linear infinite;
+}
+@keyframes mark-pulse-draw{
+  0%   { stroke-dashoffset: 50; opacity: .35; }
+  55%  { stroke-dashoffset: 0;  opacity: 1; }
+  100% { stroke-dashoffset: -50; opacity: .35; }
+}
+.mark-pulse{
+  stroke-dasharray: 50;
+  animation: mark-pulse-draw 2.2s ease-in-out infinite;
+}
+@keyframes mark-core-beat{
+  0%, 100% { transform: scale(1);    opacity: 1;  filter: drop-shadow(0 0 1px #3FE0B5); }
+  55%      { transform: scale(1.45); opacity: .65; filter: drop-shadow(0 0 5px #3FE0B5); }
+}
+.mark-core{
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: mark-core-beat 2.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce){
+  .mark-ring, .mark-pulse, .mark-core{ animation: none; }
+}
+
+/* ============ GAUGE ENTRANCE ANIMATION ============ */
+@keyframes gauge-arc-in{ to { stroke-dashoffset: 0; } }
+.gauge-arc{
+  stroke-dasharray: var(--len);
+  stroke-dashoffset: var(--len);
+  animation: gauge-arc-in 1.1s cubic-bezier(.22,.9,.32,1) forwards;
+  animation-delay: var(--gdelay, 0s);
+}
+@keyframes gauge-needle-in{
+  from { transform: rotate(var(--rot)); }
+  to   { transform: rotate(0deg); }
+}
+.gauge-needle{
+  transform-box: view-box;
+  transform-origin: 80px 88px;
+  animation: gauge-needle-in 1.1s cubic-bezier(.22,.9,.32,1) forwards;
+  animation-delay: var(--gdelay, 0s);
+}
+@media (prefers-reduced-motion: reduce){
+  .gauge-arc, .gauge-needle{ animation: none; stroke-dashoffset: 0; transform: none; }
+}
+.caret{animation:caret 1s steps(1) infinite}
+
+/* ============ APP SHELL ============ */
+.app{display:flex;flex-direction:column;min-height:100vh}
+
+/* ============ TOP NAMEPLATE ============ */
+.topbar{
+  background:linear-gradient(180deg,#101511,#0D110E);
+  border-bottom:1px solid var(--line);
+  padding:0 26px;
+  height:64px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:300;
+}
+.plate{display:flex;align-items:center;gap:12px}
+.plate-mark{width:34px;height:34px;position:relative;flex-shrink:0}
+.plate-txt{display:flex;flex-direction:column;line-height:1.05}
+.plate-name{font-family:'Space Grotesk';font-size:17px;font-weight:600;letter-spacing:.3px;color:var(--ink)}
+.plate-sub{font:500 9.5px/1 'IBM Plex Mono';letter-spacing:1.6px;text-transform:uppercase;color:var(--ink-faint);margin-top:3px}
+.plate-div{width:1px;height:28px;background:var(--line);margin:0 4px}
+
+/* function rocker switches */
+.rockers{display:flex;align-items:center;gap:22px}
+.rocker{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.rocker-lbl{font:600 10px/1 'IBM Plex Mono';letter-spacing:.8px;text-transform:uppercase;color:var(--ink-faint);transition:color .2s}
+.rocker.active .rocker-lbl{color:var(--ink)}
+.rocker-body{width:40px;height:20px;border-radius:5px;background:#0C100D;border:1px solid var(--line-bright);position:relative;box-shadow:inset 0 1px 3px rgba(0,0,0,.6)}
+.rocker-thumb{position:absolute;top:2px;left:2px;width:16px;height:14px;border-radius:3px;background:linear-gradient(180deg,#3A433C,#252B26);border:1px solid rgba(255,255,255,.12);transition:left .2s ease;box-shadow:0 1px 2px rgba(0,0,0,.5)}
+.rocker.active .rocker-thumb{left:22px;background:linear-gradient(180deg,#F0954F,var(--copper));border-color:#F5A162}
+.rocker-led{width:5px;height:5px;border-radius:50%;background:var(--ink-faint)}
+.rocker.active .rocker-led{background:var(--copper);box-shadow:0 0 6px var(--copper-glow)}
+
+.hdr-right{display:flex;align-items:center;gap:16px}
+.live-tag{display:flex;align-items:center;gap:7px;font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-soft)}
+.live-tag .dot{width:6px;height:6px;border-radius:50%;background:var(--teal);color:var(--teal)}
+.persona-tag{font:500 11px/1 'IBM Plex Sans';color:var(--ink);background:var(--panel-3);border:1px solid var(--line-bright);border-radius:6px;padding:8px 12px}
+
+/* ============ BODY SHELL: RAIL + STAGE ============ */
+.body-shell{display:flex;flex:1;min-height:0}
+
+.rail{
+  width:78px;flex-shrink:0;
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;
+  padding:22px 0;gap:6px;
+}
+.rail-item{
+  width:58px;padding:12px 0 10px;border-radius:9px;
+  display:flex;flex-direction:column;align-items:center;gap:7px;
+  cursor:pointer;color:var(--ink-faint);
+  border:1px solid transparent;
+}
+.rail-item:hover{color:var(--ink-soft)}
+.rail-item.active{background:var(--panel-3);border-color:var(--line-bright);color:var(--ink)}
+.rail-icon{width:20px;height:20px}
+.rail-lbl{font:600 8.6px/1.2 'IBM Plex Mono';letter-spacing:.4px;text-transform:uppercase;text-align:center}
+.rail-led{width:4px;height:4px;border-radius:50%;background:transparent}
+.rail-item.active .rail-led{background:var(--copper);box-shadow:0 0 5px var(--copper-glow)}
+.rail-spacer{flex:1}
+.rail-foot{font:500 8px/1.4 'IBM Plex Mono';color:var(--ink-faint);text-align:center;padding:0 6px;letter-spacing:.3px}
+
+.stage{flex:1;min-width:0;overflow-y:auto}
+.fn-panel{display:none}
+.fn-panel.active{display:block}
+.view{display:none;max-width:1280px;margin:0 auto;padding:30px 30px 70px}
+.view.active{display:block;animation:rise .3s ease}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* module panel base */
+.module{background:var(--panel);border:1px solid var(--line);border-radius:12px;position:relative;box-shadow:var(--shadow-card)}
+.module-corner{position:absolute;width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.09)}
+.c-tl{top:8px;left:8px}.c-tr{top:8px;right:8px}.c-bl{bottom:8px;left:8px}.c-br{bottom:8px;right:8px}
+
+/* ============ FILTER STRIP ============ */
+.filter-strip{display:flex;align-items:center;gap:8px;margin-bottom:22px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.filter-lbl{font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.6px;text-transform:uppercase;color:var(--ink-faint);margin-right:2px}
+.fsel-wrap{position:relative;display:flex;align-items:center}
+.fsel-wrap::after{content:'';position:absolute;right:10px;width:6px;height:6px;border-right:1.4px solid var(--ink-faint);border-bottom:1.4px solid var(--ink-faint);transform:rotate(45deg);pointer-events:none}
+.fsel{
+  appearance:none;font:500 11px/1 'IBM Plex Mono';color:var(--ink-soft);
+  background:var(--panel-3);border:1px solid var(--line-bright);border-radius:6px;
+  padding:8px 26px 8px 11px;cursor:pointer;outline:none;
+}
+.fsel:hover{border-color:var(--copper)}
+.filter-sep{width:1px;height:18px;background:var(--line);margin:0 2px}
+.filter-live{margin-left:auto;font:500 10px/1 'IBM Plex Mono';color:var(--ink-faint)}
+
+/* ============ OVERVIEW: greeting ============ */
+.greet{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px}
+.greet-title{font-family:'Space Grotesk';font-size:22px;font-weight:600;color:var(--ink)}
+.greet-sub{font:500 11px/1 'IBM Plex Mono';color:var(--ink-faint);margin-top:6px;letter-spacing:.3px}
+.greet-sub b{color:var(--copper)}
+
+/* ============ INSTRUMENT CLUSTER ============ */
+.cluster{padding:22px 24px 14px;margin-bottom:8px}
+.cluster-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.cluster-title{font:600 10px/1 'IBM Plex Mono';letter-spacing:1px;text-transform:uppercase;color:var(--ink-faint)}
+.cluster-src{font:500 10px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.gauge{padding:10px 8px 4px;text-align:center}
+.gauge svg{width:150px;height:98px}
+.gauge-name{font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;color:var(--ink-soft);margin-top:-6px}
+.gauge-num{font-family:'Space Grotesk';font-weight:700;font-size:26px;margin-top:2px}
+.gauge-ctx{font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-faint);margin-top:3px}
+.gauge-delta{font:600 10.5px/1 'IBM Plex Mono';margin-top:3px}
+
+/* trace connector */
+.trace{height:26px;position:relative;margin:2px 24px}
+.trace svg{width:100%;height:100%}
+
+/* ============ BREAKER PANEL ============ */
+.breaker-head{display:flex;justify-content:space-between;align-items:baseline;margin:26px 2px 10px}
+.breaker-head h2{font:600 10px/1 'IBM Plex Mono';letter-spacing:1px;text-transform:uppercase;color:var(--ink-faint)}
+.breaker-head span{font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.breaker-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.breaker{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 15px 14px;cursor:pointer;transition:border-color .18s,background .18s;
+}
+.breaker:hover{border-color:var(--line-bright)}
+.breaker.on,.pinpoint.on{background:var(--panel-2);border-color:var(--line-bright)}
+.brk-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.brk-num{font:600 10px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.brk-lever{width:26px;height:14px;border-radius:4px;background:#0C100D;border:1px solid var(--line-bright);position:relative;cursor:pointer}
+.brk-lever:hover{border-color:var(--copper)}
+.brk-lever i{position:absolute;top:2px;left:2px;width:10px;height:8px;border-radius:2px;background:var(--ink-faint);transition:all .2s}
+.breaker.on .brk-lever i,.pinpoint.on .brk-lever i{left:14px;background:var(--sw-color,var(--copper));box-shadow:0 0 5px var(--sw-color,var(--copper))}
+.brk-title{font-family:'Space Grotesk';font-size:14px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.brk-line{font-size:11px;line-height:1.55;color:var(--ink-soft);margin-bottom:12px;min-height:50px}
+.brk-mini{height:34px;margin-bottom:10px}
+.brk-stats{display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding-top:9px}
+.brk-stat{font:600 12px/1 'IBM Plex Mono';color:var(--ink)}
+.brk-stat span{display:block;font:500 9px/1 'IBM Plex Sans';color:var(--ink-faint);margin-top:3px;text-transform:uppercase;letter-spacing:.3px}
+
+/* accordion */
+.accordion{max-height:0;overflow:hidden;transition:max-height .35s ease}
+.accordion.open{max-height:900px}
+.accordion-in{background:var(--panel-2);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);margin-top:-6px;padding:20px 22px}
+
+/* ============ HEATMAP (Overview) ============ */
+.ov-heatwrap{overflow-x:auto}
+.ov-heatgrid{display:grid;gap:3px;min-width:560px}
+.ov-heat-colhead{font:600 9px/1.2 'IBM Plex Mono';color:var(--ink-faint);text-align:center;align-self:end;padding-bottom:4px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
+.ov-heat-rowhead{font:600 11px/1 'IBM Plex Sans';color:var(--ink-soft);display:flex;align-items:center;white-space:nowrap;padding-right:8px}
+.ov-heatcell{border-radius:6px;display:flex;align-items:center;justify-content:center;font:600 12px/1 'IBM Plex Mono';color:#fff;min-height:38px;cursor:pointer;transition:transform .1s,filter .1s}
+.ov-heatcell:hover{transform:scale(1.06);filter:brightness(1.2)}
+
+/* ============ RICH DRILL-DOWN PANEL ============ */
+.drill-panel{max-height:0;overflow:hidden;transition:max-height .4s ease}
+.drill-panel.open{max-height:1400px}
+.drill-in{margin-top:16px;padding-top:18px;border-top:1px dashed var(--line-bright)}
+.drill-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.drill-title{font-family:'Space Grotesk';font-size:15px;font-weight:600;color:var(--ink)}
+.drill-ctx{font:500 11px/1.5 'IBM Plex Mono';color:var(--ink-faint);margin-top:3px}
+.drill-close{width:24px;height:24px;border-radius:7px;border:1px solid var(--line-bright);background:var(--panel);color:var(--ink-soft);cursor:pointer;font-size:12px}
+.drill-mini-wide{margin-bottom:14px}
+.drill-mini-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0}
+.drill-mini{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.drill-mini-label{font:600 10.5px/1 'IBM Plex Mono';color:var(--ink-faint);text-transform:uppercase;letter-spacing:.3px;margin-bottom:12px}
+.drill-why{background:rgba(124,140,245,.08);border-left:3px solid var(--indigo);border-radius:0 8px 8px 0;padding:14px 16px;margin:14px 0}
+.drill-why-lbl{font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.4px;text-transform:uppercase;color:var(--indigo);margin-bottom:8px}
+.drill-why-text{font-size:13.5px;line-height:1.7;color:var(--ink)}
+
+.corr-table{width:100%;border-collapse:collapse;margin:14px 0}
+.corr-table th{font:600 9.5px/1 'IBM Plex Mono';color:var(--ink-faint);text-transform:uppercase;text-align:left;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+.corr-table td{font-size:11.5px;color:var(--ink-soft);padding:9px 10px 9px 0;border-bottom:1px solid var(--line-soft,var(--line))}
+.corr-r{display:inline-block;min-width:52px;text-align:center;padding:3px 8px;border-radius:6px;font-family:'IBM Plex Mono';font-weight:600;font-size:11px}
+.drill-rec{background:var(--teal-soft);border:1px solid rgba(63,224,181,.28);border-radius:10px;padding:13px 15px;margin-top:4px}
+.drill-rec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.drill-rec-lbl{font:600 10px/1 'IBM Plex Mono';color:var(--teal);text-transform:uppercase;letter-spacing:.4px}
+.drill-conf{font:600 10px/1 'IBM Plex Mono';color:var(--teal);background:rgba(63,224,181,.15);padding:3px 8px;border-radius:99px}
+.drill-rec-text{font-size:12px;line-height:1.6;color:var(--ink)}
+
+.vis-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.vis-grid .vis-section{grid-column:span 12}
+.vis-grid .vis-span-7{grid-column:span 7}
+.vis-grid .vis-span-5{grid-column:span 5}
+@media(max-width:1000px){ .vis-grid .vis-span-7,.vis-grid .vis-span-5{grid-column:span 12} }
+
+/* ============ CHART TOOLTIP ============ */
+.chart-tip{position:fixed;pointer-events:none;background:var(--panel-2);border:1px solid var(--line-bright);border-radius:8px;padding:9px 12px;font:500 11px/1.5 'IBM Plex Mono';color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:950;display:none;max-width:220px}
+.chart-tip b{color:inherit;font-weight:700}
+.chart-tip .tip-lbl{color:var(--ink-faint);font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:3px}
+
+/* ============ VISUAL SECTIONS ============ */
+.vis-section{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--sw-color,var(--copper));border-radius:12px;padding:20px 24px 24px;box-shadow:var(--shadow-card);transition:box-shadow .2s,transform .2s}
+.vis-section:hover{box-shadow:var(--shadow-card-hover);transform:translateY(-1px)}
+.vis-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.vis-hint{font:500 10.5px/1.3 'IBM Plex Mono';color:var(--ink-faint)}
+.vis-head-left{display:flex;align-items:center;gap:8px}
+.vis-dot{width:8px;height:8px;border-radius:50%;background:var(--sw-color,var(--copper));box-shadow:0 0 6px var(--sw-color,var(--copper))}
+.vis-title{font-family:'Space Grotesk';font-size:14px;font-weight:600;color:var(--ink)}
+.vis-chart{width:100%}
+.vis-bar-group{cursor:pointer}
+.vis-bar-group:hover rect{filter:brightness(1.25)}
+.vis-bar-group:hover .vis-bar-label{fill:var(--ink)}
+.vis-open-link{margin-top:12px;font:600 10.5px/1 'IBM Plex Mono';color:var(--ink-faint);cursor:pointer;display:inline-block}
+.vis-open-link:hover{color:var(--copper)}
+
+/* ============ INSIGHT MODAL ============ */
+.modal-backdrop{position:fixed;inset:0;background:rgba(6,9,7,.72);backdrop-filter:blur(2px);z-index:900;display:none;align-items:center;justify-content:center;padding:24px}
+.modal-backdrop.open{display:flex}
+.modal-card{background:var(--panel-2);border:1px solid var(--line-bright);border-radius:14px;max-width:880px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel-2)}
+.modal-eyebrow{font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;color:var(--modal-color,var(--copper))}
+.modal-title{font-family:'Space Grotesk';font-size:17px;font-weight:600;color:var(--ink);margin-top:5px;max-width:460px}
+.modal-close{width:28px;height:28px;border-radius:8px;border:1px solid var(--line-bright);background:var(--panel);color:var(--ink-soft);cursor:pointer;flex-shrink:0;font-size:14px}
+.modal-close:hover{background:var(--panel3);color:var(--ink)}
+.modal-body{padding:20px 22px 22px}
+.modal-row{margin-bottom:16px}
+.modal-row:last-child{margin-bottom:0}
+.modal-label{display:flex;align-items:center;gap:7px;font:600 10px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
+.modal-label.what{color:var(--ink-soft)}
+.modal-label.why{color:var(--indigo)}
+.modal-label.rec{color:var(--teal)}
+.modal-label.fcst{color:var(--copper)}
+.modal-text{font-size:12.5px;line-height:1.65;color:var(--ink)}
+.modal-row.rec{background:var(--teal-soft);border:1px solid rgba(63,224,181,.25);border-radius:10px;padding:12px 14px}
+.modal-foot{padding:14px 22px 20px}
+.modal-foot-link{font:600 10.5px/1 'IBM Plex Mono';color:var(--modal-color,var(--copper));cursor:pointer}
+.modal-foot-link:hover{text-decoration:underline}
+
+/* ============ PINPOINT CARDS ============ */
+.pinpoint-row{display:flex;flex-direction:column;gap:10px}
+.pinpoint-wrap .pinpoint{border-radius:var(--radius) var(--radius) 0 0}
+.pinpoint-wrap .accordion-in{background:var(--panel-2);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);margin-top:-6px;padding:16px 22px 18px}
+.pinpoint{
+  background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--sw-color,var(--copper));
+  border-radius:var(--radius);padding:20px 22px;cursor:pointer;transition:border-color .15s,background .15s;
+}
+.pinpoint:hover{background:var(--panel-2);border-color:var(--line-bright)}
+.pp-top{display:flex;align-items:center;gap:12px;margin-bottom:9px}
+.pp-top .pp-badge{margin-left:auto}
+.pp-eyebrow{font:600 10px/1 'IBM Plex Mono';letter-spacing:.6px;text-transform:uppercase;color:var(--sw-color,var(--copper))}
+.pp-badge{font:600 9.5px/1 'IBM Plex Mono';padding:4px 9px;border-radius:99px;letter-spacing:.3px}
+.pp-badge.crit{background:rgba(255,98,89,.15);color:var(--red)}
+.pp-badge.watch{background:rgba(245,185,66,.15);color:var(--amber)}
+.pp-badge.monitor{background:rgba(79,182,232,.15);color:var(--sky)}
+.pp-headline{font-family:'Space Grotesk';font-size:17px;font-weight:600;line-height:1.4;color:var(--ink);margin-bottom:7px;max-width:800px}
+.pp-why{font-size:12.5px;line-height:1.65;color:var(--ink-soft);max-width:800px;margin-bottom:14px}
+.pp-period{font:500 10px/1.4 'IBM Plex Mono';color:var(--ink-faint);margin-bottom:12px}
+.pp-buckets{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pp-bucket{display:flex;align-items:center;gap:7px;font:500 11px/1 'IBM Plex Sans';color:var(--ink-soft);background:var(--panel-3);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer;transition:background .15s,border-color .15s}
+.pp-bucket:hover{background:var(--panel-2);border-color:var(--sw-color,var(--line-bright))}
+.pp-bucket b{font-family:'IBM Plex Mono';color:var(--ink);font-weight:600}
+.pp-bucket .up{color:var(--copper)}
+.pp-bucket .down{color:var(--teal)}
+.pp-foot{margin-top:12px;font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.next-link{margin-top:6px;padding:14px 18px;border:1px dashed var(--line-bright);border-radius:var(--radius);cursor:pointer;text-align:center;transition:border-color .15s,background .15s}
+.next-link:hover{background:var(--panel-2);border-color:var(--copper)}
+.next-link span{font:600 11.5px/1 'IBM Plex Mono';color:var(--copper);letter-spacing:.3px}
+
+.pp-ai-label{display:flex;align-items:center;gap:6px;font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;color:var(--teal);margin-bottom:8px}
+.pp-ai-label svg{width:11px;height:11px}
+.pp-actions{display:flex;gap:10px;margin-top:16px}
+.pp-btn{font:600 11px/1 'IBM Plex Sans';padding:9px 15px;border-radius:8px;cursor:pointer;transition:background .15s,border-color .15s}
+.pp-btn-primary{background:var(--panel-3);border:1px solid var(--line-bright);color:var(--ink)}
+.pp-btn-primary:hover{background:var(--panel-2);border-color:var(--sw-color,var(--copper))}
+.pp-btn-ai{background:rgba(63,224,181,.1);border:1px solid rgba(63,224,181,.3);color:var(--teal);display:flex;align-items:center;gap:6px}
+.pp-btn-ai:hover{background:rgba(63,224,181,.18)}
+.pp-btn-ai svg{width:12px;height:12px}
+
+/* ============ SIGNAL LOG (alerts) ============ */
+.termwrap{margin-top:28px;background:#080B09;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.term-head{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.term-dots{display:flex;gap:5px}
+.term-dots span{width:7px;height:7px;border-radius:50%;background:var(--line-bright)}
+.term-title{font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.6px;text-transform:uppercase;color:var(--ink-soft)}
+.term-count{margin-left:auto;font:600 10px/1 'IBM Plex Mono';color:var(--copper);background:var(--copper-soft);padding:4px 8px;border-radius:5px}
+.term-body{padding:14px 18px 18px;font:400 12.5px/2 'IBM Plex Mono'}
+.term-section{color:var(--ink-faint);font-weight:600;letter-spacing:.3px;margin-top:4px}
+.term-section:first-child{margin-top:0}
+.term-section .grp-copper{color:var(--copper)}
+.term-section .grp-teal{color:var(--teal)}
+.term-line{color:var(--ink-soft);white-space:pre-wrap}
+.term-ts{color:var(--ink-faint)}
+.term-sev{margin-right:2px}
+.sev-hi{color:var(--red)}.sev-med{color:var(--copper)}.sev-low{color:var(--amber)}
+.term-line b{color:var(--ink);font-weight:600}
+.term-act{color:var(--teal)}
+.term-cursor{color:var(--teal)}
+
+/* ============ DEEP INSIGHTS ============ */
+.dp-select{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.dp-chip{font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.3px;padding:9px 14px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-faint);cursor:pointer;display:flex;align-items:center;gap:8px}
+.dp-chip .sw{width:6px;height:6px;border-radius:1px}
+.dp-chip.active{background:var(--panel-3);color:var(--ink);border-color:var(--line-bright)}
+
+.report-section{margin-bottom:26px}
+.report-lbl{display:flex;align-items:center;gap:7px;font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+.report-lbl.ai{color:var(--teal)}
+.report-lbl.deep{color:var(--indigo)}
+.report-lbl.root{color:var(--rose)}
+.report-lbl.rec{color:var(--copper)}
+.report-lbl svg{width:13px;height:13px}
+.report-text{font-size:14px;line-height:1.75;color:var(--ink);max-width:760px}
+.report-text + .report-text{margin-top:12px}
+.rec-list{display:flex;flex-direction:column;gap:10px}
+.rec-item{display:flex;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px 16px}
+.rec-item-num{width:22px;height:22px;border-radius:6px;background:rgba(190,90,34,.14);color:var(--copper);font:700 11px/22px 'IBM Plex Mono';text-align:center;flex-shrink:0}
+.rec-item-text{font-size:13px;line-height:1.6;color:var(--ink)}
+.report-chat-cta{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--panel2);border:1px dashed var(--line-bright);border-radius:12px;padding:16px 20px;margin-top:26px}
+.report-chat-cta-text{font-size:12.5px;color:var(--ink-soft);max-width:480px}
+.report-chat-cta-text b{color:var(--ink)}
+.report-chat-btn{display:flex;align-items:center;gap:7px;background:rgba(63,224,181,.12);border:1px solid rgba(63,224,181,.35);color:var(--teal);font:600 11.5px/1 'IBM Plex Sans';padding:10px 16px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.report-chat-btn:hover{background:rgba(63,224,181,.2)}
+.report-chat-btn svg{width:13px;height:13px}
+
+.plaque{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;padding:22px 26px;border-left:3px solid var(--copper)}
+.plaque-eyebrow{font:600 10px/1 'IBM Plex Mono';letter-spacing:1px;text-transform:uppercase;color:var(--copper);margin-bottom:9px}
+.plaque-h{font-family:'Space Grotesk';font-size:20px;font-weight:600;line-height:1.4;color:var(--ink);max-width:760px}
+
+.dp-body{background:var(--panel);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:26px}
+.blk{margin-bottom:30px}
+.blk-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px}
+.blk-head h3{font-family:'Space Grotesk';font-size:14px;font-weight:600;color:var(--ink)}
+.blk-head p{font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-faint);margin-top:5px}
+.legend{display:flex;gap:16px}
+.legend-item{display:flex;align-items:center;gap:6px;font:500 10px/1 'IBM Plex Mono';color:var(--ink-soft)}
+.legend-sw{width:13px;height:2px}
+.legend-sw.dash{border-top:2px dashed var(--copper);height:0}
+
+.two-col{display:grid;grid-template-columns:1.3fr 1fr;gap:26px}
+.mini-stat-row{display:flex;gap:24px;flex-wrap:wrap}
+.mini-stat b{display:block;font-family:'IBM Plex Mono';font-size:16px;font-weight:600;color:var(--ink);margin-bottom:2px}
+.mini-stat span{font:500 9.5px/1 'IBM Plex Sans';color:var(--ink-faint);text-transform:uppercase;letter-spacing:.3px}
+
+/* ============ PAIN INDEX + FOCUS TABLE ============ */
+.top-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:14px;margin-bottom:10px}
+.pain-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;box-shadow:var(--shadow-card)}
+.pain-top{display:flex;align-items:center;gap:18px}
+.pain-drivers{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);flex:1;display:flex;flex-direction:column}
+.pain-drivers-lbl{font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint);margin-bottom:10px}
+.pain-driver-row{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.pain-driver-row:last-child{margin-bottom:0}
+.pain-driver-name{width:118px;flex-shrink:0;font:500 10.5px/1.3 'IBM Plex Sans';color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pain-driver-track{flex:1;height:6px;background:var(--panel3);border-radius:99px;overflow:hidden}
+.pain-driver-fill{height:100%;border-radius:99px}
+.pain-driver-pts{width:34px;text-align:right;font:600 10.5px/1 'IBM Plex Mono';color:var(--ink)}
+.pain-num{font-family:'Space Grotesk';font-size:36px;font-weight:700;line-height:1}
+.pain-label{font:600 10.5px/1.4 'IBM Plex Mono';color:var(--ink-faint);margin-top:5px;max-width:150px}
+.rec-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow-card)}
+.rec-row{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-top:1px solid var(--line-soft, var(--line));cursor:pointer}
+.rec-row:first-of-type{border-top:none;padding-top:2px}
+.rec-row-icon{width:22px;height:22px;border-radius:6px;background:rgba(63,224,181,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.rec-row-icon svg{width:12px;height:12px;color:var(--teal)}
+.rec-row-text{font:500 12px/1.5 'IBM Plex Sans';color:var(--ink-soft)}
+.rec-row-text b{color:var(--ink);font-weight:600}
+.rec-row:hover .rec-row-text b{color:var(--teal)}
+
+.focus-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow-card)}
+.focus-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.focus-head h3{font-family:'Space Grotesk';font-size:13.5px;font-weight:600;color:var(--ink)}
+.focus-head span{font:500 10px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.focus-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line-soft, var(--line));cursor:pointer}
+.focus-row:hover .focus-name{color:var(--teal)}
+.focus-rank{font:600 11px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.focus-name{font:500 12px/1.3 'IBM Plex Sans';color:var(--ink);transition:color .15s}
+.focus-share{font:600 11.5px/1 'IBM Plex Mono';color:var(--ink-soft)}
+.focus-badge{font:600 9px/1 'IBM Plex Mono';padding:4px 8px;border-radius:99px;white-space:nowrap}
+.focus-badge.crit{background:rgba(255,98,89,.15);color:var(--red)}
+.focus-badge.watch{background:rgba(245,185,66,.15);color:var(--amber)}
+.focus-badge.stable{background:rgba(63,224,181,.15);color:var(--teal)}
+.heatwrap{overflow-x:auto}
+.heatgrid{display:grid;gap:3px;min-width:520px}
+.heat-corner{font:600 9px/1 'IBM Plex Mono';color:var(--ink-faint)}
+.heat-colhead{font:600 9px/1.2 'IBM Plex Mono';color:var(--ink-faint);text-align:center;align-self:end;padding-bottom:4px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
+.heat-rowhead{font:600 10.5px/1 'IBM Plex Sans';color:var(--ink-soft);display:flex;align-items:center;white-space:nowrap;padding-right:8px}
+.heatcell{border-radius:5px;display:flex;align-items:center;justify-content:center;font:600 10.5px/1 'IBM Plex Mono';color:#fff;min-height:34px;cursor:pointer;transition:transform .1s,filter .1s}
+.heatcell:hover{transform:scale(1.06);filter:brightness(1.2)}
+
+/* ============ SPARKLINE GRID (small multiples) ============ */
+.sparkgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.sparkcell{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s,background .15s}
+.sparkcell:hover{border-color:var(--line-bright);background:var(--panel3)}
+.sparkcell-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.sparkcell-name{font:600 11px/1 'IBM Plex Sans';color:var(--ink)}
+.sparkcell-val{font:600 11px/1 'IBM Plex Mono'}
+
+.stat-strip{display:flex;gap:24px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.stat b{display:block;font-family:'Space Grotesk';font-size:19px;font-weight:700;color:var(--ink)}
+.stat span{font:500 9.5px/1 'IBM Plex Mono';color:var(--ink-faint);text-transform:uppercase;letter-spacing:.3px}
+
+.rca-row{display:grid;grid-template-columns:130px 1fr 44px;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;border-radius:6px;transition:background .15s}
+.rca-row:hover{background:var(--panel2)}
+.rca-label{font-size:11.5px;color:var(--ink-soft)}
+.rca-track{height:8px;background:var(--panel-3);border-radius:99px;overflow:hidden}
+.rca-fill{height:100%;border-radius:99px}
+.rca-pct{font:600 11.5px/1 'IBM Plex Mono';text-align:right;color:var(--ink)}
+
+.consumer{background:var(--panel-2);border-left:2px solid var(--indigo);border-radius:0 8px 8px 0;padding:15px 17px;margin-top:6px}
+.consumer-lbl{font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;color:var(--indigo);margin-bottom:7px}
+.consumer-quote{font-family:'Space Grotesk';font-style:normal;font-size:14px;line-height:1.6;color:var(--ink)}
+.consumer-meta{font:500 10px/1 'IBM Plex Mono';color:var(--ink-faint);margin-top:9px}
+
+.chips-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.src-chip{font:500 10px/1 'IBM Plex Mono';padding:7px 11px;border-radius:6px;border:1px solid var(--line-bright);color:var(--ink-soft);background:var(--panel-3)}
+
+.rec{background:var(--teal-soft);border:1px solid rgba(63,224,181,.28);border-radius:var(--radius);padding:18px 20px;margin-top:22px}
+.rec-lbl{display:flex;align-items:center;gap:8px;font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.5px;text-transform:uppercase;color:var(--teal);margin-bottom:10px}
+.rec-text{font-size:13px;line-height:1.65;color:var(--ink)}
+.rec-foot{display:flex;justify-content:space-between;align-items:center;margin-top:15px}
+.fb-group{display:flex;gap:6px}
+.fb-btn{width:28px;height:28px;border-radius:7px;border:1px solid rgba(63,224,181,.3);background:var(--panel);cursor:pointer;font-size:12px}
+.fb-btn:hover{background:var(--teal);border-color:var(--teal)}
+.rec-src{font:500 9.5px/1 'IBM Plex Mono';color:var(--ink-faint)}
+
+/* ============ RESEARCH AGENT ============ */
+.agent-chain{display:flex;align-items:flex-start;gap:0;margin:20px 0 26px}
+.agent-step{display:flex;flex-direction:column;align-items:center;gap:8px;flex:1;position:relative}
+.agent-node{width:32px;height:32px;border-radius:50%;background:var(--panel-3);border:1.5px solid var(--teal);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--teal);z-index:2}
+.agent-node.done{background:var(--teal);color:#04120D;font-weight:700}
+.agent-label{font:600 9.5px/1.3 'IBM Plex Mono';text-align:center;color:var(--ink-soft);max-width:110px}
+.agent-connector{position:absolute;top:16px;left:50%;width:100%;height:1.5px;background:var(--teal);opacity:.4;z-index:1}
+.report-block{margin-bottom:18px}
+.report-h{font:600 10.5px/1 'IBM Plex Mono';letter-spacing:.6px;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px}
+.report-body{font-size:13px;line-height:1.7;color:var(--ink)}
+
+/* ============ COMM / CHAT ============ */
+.comm{max-width:760px;margin:0 auto}
+.comm-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.comm-head .dot{width:7px;height:7px;border-radius:50%;background:var(--teal)}
+.comm-head b{font-family:'Space Grotesk';font-size:14px;font-weight:600}
+.comm-head span{font:500 10.5px/1 'IBM Plex Mono';color:var(--ink-faint);margin-left:auto}
+
+.log{display:flex;flex-direction:column;gap:3px;margin-bottom:22px}
+.log-line{display:flex;gap:12px;padding:10px 0;font-size:12.5px;line-height:1.6}
+.log-ts{font:500 10px/1.6 'IBM Plex Mono';color:var(--ink-faint);width:52px;flex-shrink:0;padding-top:2px}
+.log-who{font:600 10.5px/1.6 'IBM Plex Mono';width:78px;flex-shrink:0;padding-top:2px;letter-spacing:.3px}
+.log-who.you{color:var(--ink-soft)}
+.log-who.ai{color:var(--copper)}
+.log-txt{color:var(--ink);flex:1}
+.log-meta{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.log-tag{font:500 9.5px/1 'IBM Plex Mono';color:var(--ink-faint);background:var(--panel-2);border:1px solid var(--line);padding:4px 8px;border-radius:5px}
+.log-chart{width:100%;max-width:340px;height:56px;margin-top:10px}
+
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{font:500 11px/1 'IBM Plex Sans';padding:8px 13px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer}
+.chip:hover{border-color:var(--teal);color:var(--teal)}
+
+.cmdline{display:flex;align-items:center;gap:10px;background:#080B09;border:1px solid var(--line-bright);border-radius:8px;padding:13px 16px}
+.cmdline .prompt{font:600 13px/1 'IBM Plex Mono';color:var(--teal)}
+.cmdline input{flex:1;border:none;outline:none;background:none;font:400 13px 'IBM Plex Mono';color:var(--ink)}
+.cmdline .caret{width:7px;height:15px;background:var(--teal)}
+
+/* ============ FOOTER ============ */
+.foot{max-width:1280px;margin:0 auto;padding:0 30px 40px;display:flex;justify-content:space-between;font:500 9.5px/1 'IBM Plex Mono';color:var(--ink-faint);letter-spacing:.3px}
+
+@media(max-width:1000px){
+  .gauges{grid-template-columns:1fr}
+  .breaker-row{grid-template-columns:1fr 1fr}
+  .two-col{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TOP NAMEPLATE ============ -->
+  <header class="topbar">
+    <div class="plate">
+      <svg class="plate-mark" viewBox="0 0 34 34" fill="none">
+        <circle cx="17" cy="17" r="15.5" stroke="#3A433C" stroke-width="1"/>
+        <circle class="mark-ring" cx="17" cy="17" r="15.5" stroke="url(#g1)" stroke-width="1.4" stroke-dasharray="20 78"/>
+        <path class="mark-pulse" d="M6 18 L12 18 L14.5 11 L18 26 L20.5 15 L22 18 L28 18" stroke="#E1793B" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle class="mark-core" cx="17" cy="17" r="2" fill="#3FE0B5"/>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="34" y2="34"><stop stop-color="#E1793B"/><stop offset="1" stop-color="#3FE0B5"/></linearGradient></defs>
+      </svg>
+      <div class="plate-txt">
+        <span class="plate-name">DRISHTI</span>
+        <span class="plate-sub">Signal Panel · Consumer Insight Factory</span>
+      </div>
+    </div>
+
+    <div class="rockers">
+      <div class="rocker" onclick="setFn(this)">
+        <span class="rocker-lbl">Brand</span>
+        <div class="rocker-body"><div class="rocker-thumb"></div></div>
+        <span class="rocker-led"></span>
+      </div>
+      <div class="rocker" onclick="setFn(this)">
+        <span class="rocker-lbl">Product</span>
+        <div class="rocker-body"><div class="rocker-thumb"></div></div>
+        <span class="rocker-led"></span>
+      </div>
+      <div class="rocker active" onclick="setFn(this,'service')">
+        <span class="rocker-lbl">Service</span>
+        <div class="rocker-body"><div class="rocker-thumb"></div></div>
+        <span class="rocker-led"></span>
+      </div>
+    </div>
+
+    <div class="hdr-right">
+      <span class="live-tag"><svg width="6" height="6" class="led-live"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>LIVE · SYNCED 6 MIN AGO</span>
+      <span class="persona-tag">Customer Service Manager</span>
+    </div>
+  </header>
+
+  <div class="body-shell">
+
+    <!-- ============ LEFT RAIL ============ -->
+    <nav class="rail">
+      <div class="rail-item active" data-view="overview" onclick="showView('overview',this)">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>
+        <span class="rail-lbl">Overview</span>
+        <span class="rail-led"></span>
+      </div>
+      <div class="rail-item" data-view="deep" onclick="showView('deep',this)">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 19V10M11 19V5M18 19v-7"/></svg>
+        <span class="rail-lbl">Deep</span>
+        <span class="rail-led"></span>
+      </div>
+      <div class="rail-item" data-view="forecast" onclick="showView('forecast',this)">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17 L9 10 L13 14 L21 5"/><path d="M15 5 L21 5 L21 11"/></svg>
+        <span class="rail-lbl">Forecast</span>
+        <span class="rail-led"></span>
+      </div>
+      <div class="rail-item" data-view="genie" onclick="showView('genie',this)">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+        <span class="rail-lbl">Genie</span>
+        <span class="rail-led"></span>
+      </div>
+      <div class="rail-item" data-view="research" onclick="showView('research',this)">
+        <svg class="rail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7.6 7.2 L11 16.2 M16.4 7.2 L13 16.2 M8.2 6 L15.8 6"/></svg>
+        <span class="rail-lbl">Research</span>
+        <span class="rail-led"></span>
+      </div>
+      <div class="rail-spacer"></div>
+      <div class="rail-foot">CIF<br/>v2 · MAY 26</div>
+    </nav>
+
+    <!-- ============ STAGE ============ -->
+    <main class="stage">
+
+      <div style="max-width:1280px;margin:0 auto;padding:22px 30px 0">
+        <div class="filter-strip">
+          <span class="filter-lbl">Filter</span>
+          <div class="fsel-wrap"><select class="fsel"><option>All categories</option><option>Water Heaters</option><option>Fans</option><option>Cables &amp; Wires</option><option>Air Purifiers</option></select></div>
+          <div class="filter-sep"></div>
+          <div class="fsel-wrap"><select class="fsel"><option>May 2026</option><option>Apr 2026</option><option>Q1 FY26–27</option><option>Trailing 12mo</option></select></div>
+          <div class="filter-sep"></div>
+          <div class="fsel-wrap"><select class="fsel"><option>All regions</option><option>North</option><option>South</option><option>East</option><option>West</option></select></div>
+          <span class="filter-live">Applies across Overview · Deep · Genie · Research</span>
+        </div>
+      </div>
+
+      <!-- ============ SERVICE ============ -->
+      <div class="fn-panel active" data-fn="service">
+
+      <!-- OVERVIEW -->
+      <section class="view active" data-view="overview" id="view-overview">
+        <div class="greet">
+          <div>
+            <div class="greet-title">Good morning, Niya.</div>
+            <div class="greet-sub">CUSTOMER SERVICE INTELLIGENCE · <b>2 of 5 pinpoints need attention today</b></div>
+          </div>
+        </div>
+
+        <!-- INSTRUMENT CLUSTER -->
+        <div class="module cluster">
+          <span class="module-corner c-tl"></span><span class="module-corner c-tr"></span><span class="module-corner c-bl"></span><span class="module-corner c-br"></span>
+          <div class="cluster-head">
+            <span class="cluster-title">Instrument Cluster — Work Order Table</span>
+            <span class="cluster-src">GROUPED BY category · closed</span>
+          </div>
+          <div class="gauges">
+            <div class="gauge">
+              <svg viewBox="0 0 160 100">
+                <path d="M14.0,88.0 A66,66 0 1 1 146.0,88.0" fill="none" stroke="#232A25" stroke-width="9" stroke-linecap="round"/>
+                <path class="gauge-arc" style="--len:147.2px;--gdelay:0s" d="M14.0,88.0 A66,66 0 0 1 120.5,35.8" fill="none" stroke="#3FE0B5" stroke-width="9" stroke-linecap="round"/>
+                <line class="gauge-needle" style="--rot:127.8deg;--gdelay:0s" x1="80" y1="88" x2="113.2" y2="45.2" stroke="#ECEFE9" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="80" cy="88" r="4" fill="#ECEFE9"/>
+              </svg>
+              <div class="gauge-name">Service NPS</div>
+              <div class="gauge-num mono" style="color:#3FE0B5">71</div>
+              <div class="gauge-delta" style="color:#3FE0B5">↑ +2 pts QoQ</div>
+              <div class="gauge-ctx">76.6L responses · target 75</div>
+            </div>
+            <div class="gauge">
+              <svg viewBox="0 0 160 100">
+                <path d="M14.0,88.0 A66,66 0 1 1 146.0,88.0" fill="none" stroke="#232A25" stroke-width="9" stroke-linecap="round"/>
+                <path class="gauge-arc" style="--len:126.5px;--gdelay:.12s" d="M14.0,88.0 A66,66 0 0 1 102.4,25.9" fill="none" stroke="#E1793B" stroke-width="9" stroke-linecap="round"/>
+                <line class="gauge-needle" style="--rot:109.8deg;--gdelay:.12s" x1="80" y1="88" x2="98.3" y2="37.1" stroke="#ECEFE9" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="80" cy="88" r="4" fill="#ECEFE9"/>
+              </svg>
+              <div class="gauge-name">Avg TAT</div>
+              <div class="gauge-num mono" style="color:#E1793B">18.4<span style="font-size:13px">hrs</span></div>
+              <div class="gauge-delta" style="color:#E1793B">↑ +1.2 hrs above target</div>
+              <div class="gauge-ctx">target 17.2 · water heaters 26 hrs</div>
+            </div>
+            <div class="gauge">
+              <svg viewBox="0 0 160 100">
+                <path d="M14.0,88.0 A66,66 0 1 1 146.0,88.0" fill="none" stroke="#232A25" stroke-width="9" stroke-linecap="round"/>
+                <path class="gauge-arc" style="--len:82.9px;--gdelay:.24s" d="M14.0,88.0 A66,66 0 0 1 59.6,25.2" fill="none" stroke="#3FE0B5" stroke-width="9" stroke-linecap="round"/>
+                <line class="gauge-needle" style="--rot:72deg;--gdelay:.24s" x1="80" y1="88" x2="63.3" y2="36.5" stroke="#ECEFE9" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="80" cy="88" r="4" fill="#ECEFE9"/>
+              </svg>
+              <div class="gauge-name">Open Tickets</div>
+              <div class="gauge-num mono" style="color:#3FE0B5">4,821</div>
+              <div class="gauge-delta" style="color:#3FE0B5">↓ −340 vs last month</div>
+              <div class="gauge-ctx">18 cities · 618 in SLA breach</div>
+            </div>
+            <div class="gauge">
+              <svg viewBox="0 0 160 100">
+                <path d="M14.0,88.0 A66,66 0 1 1 146.0,88.0" fill="none" stroke="#232A25" stroke-width="9" stroke-linecap="round"/>
+                <path class="gauge-arc" style="--len:120.3px;--gdelay:.36s" d="M14.0,88.0 A66,66 0 0 1 96.4,24.1" fill="none" stroke="#F5B942" stroke-width="9" stroke-linecap="round"/>
+                <line class="gauge-needle" style="--rot:104.4deg;--gdelay:.36s" x1="80" y1="88" x2="93.5" y2="35.5" stroke="#ECEFE9" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="80" cy="88" r="4" fill="#ECEFE9"/>
+              </svg>
+              <div class="gauge-name">Customer Pain Index</div>
+              <div class="gauge-num mono" style="color:#F5B942">58</div>
+              <div class="gauge-delta" style="color:#F5B942">Elevated — monitor closely</div>
+              <div class="gauge-ctx">0–100 composite · updated daily</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- trace connector -->
+        <div class="trace">
+          <svg viewBox="0 0 1220 26" preserveAspectRatio="none">
+            <line x1="0" y1="13" x2="1220" y2="13" stroke="#232A25" stroke-width="1"/>
+            <circle cx="150" cy="13" r="2.4" fill="#3A433C"/>
+            <circle cx="460" cy="13" r="2.4" fill="#3A433C"/>
+            <circle cx="770" cy="13" r="2.4" fill="#3A433C"/>
+            <circle cx="1070" cy="13" r="2.4" fill="#3A433C"/>
+          </svg>
+        </div>
+
+        <!-- FOUR PILLARS -->
+        <div class="breaker-head">
+          <h2>What Needs Your Attention</h2>
+          <span>AI-generated summary per pillar · numbers live in the chat &amp; deep-dive, not up here</span>
+        </div>
+        <div class="pinpoint-row">
+
+          <div class="pinpoint" style="--sw-color:#7C8CF5" onclick="goDeep(0,this)">
+            <div class="pp-top">
+              <span class="pp-eyebrow">Complaints &amp; Customer Pain Points</span>
+              <span class="pp-badge crit">CRITICAL</span>
+            </div>
+            <div class="pp-ai-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>
+              AI SUMMARY
+            </div>
+            <div class="pp-headline">Water Heaters are generating more installation-related complaints than any other product this month, and the gap is widening.</div>
+            <div class="pp-why">The pattern traces to the same technician capacity gap in Delhi NCR — installation bookings are outpacing available technicians, especially after promotional sales spikes. Delivery-related complaints, by contrast, are easing across the board.</div>
+            <div class="pp-buckets">
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(0,'wh-install')">Water Heaters <b>&gt;</b> Fans — Installation Issue</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(0,'east-delivery')">Delivery Delay — improving region-wide</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(0,'fans-defect')">Product Defect — holding steady</span>
+            </div>
+            <div class="pp-actions">
+              <span class="pp-btn pp-btn-primary" onclick="event.stopPropagation();goDeep(0,this)">View Details →</span>
+              <span class="pp-btn pp-btn-ai" onclick="event.stopPropagation();askAI('Why are Water Heater installation complaints rising faster than other products, and what is the root cause?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI about this
+              </span>
+            </div>
+          </div>
+
+          <div class="pinpoint" style="--sw-color:#4FB6E8" onclick="goDeep(4,this)">
+            <div class="pp-top">
+              <span class="pp-eyebrow">Customer Voice — Sentiment Summary</span>
+              <span class="pp-badge watch">WATCH</span>
+            </div>
+            <div class="pp-ai-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>
+              AI SUMMARY
+            </div>
+            <div class="pp-headline">Customer sentiment is holding steady nationally, but Delhi NCR is pulling satisfaction down faster than anywhere else this month.</div>
+            <div class="pp-why">Sentiment and resolution time move together closely — as TAT worsens in a region, both NPS and CSAT follow within days. Delhi NCR's slower resolution times are why it stands out as the clear outlier this month.</div>
+            <div class="pp-buckets">
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(4,'city-delhi')">Delhi NCR — satisfaction falling faster than any other city</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(4,'nps-tat')">Satisfaction &amp; resolution time — strongest link tracked</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(4,'city-kolkata')">Social sentiment — a leading indicator, moves before formal tickets</span>
+            </div>
+            <div class="pp-actions">
+              <span class="pp-btn pp-btn-primary" onclick="event.stopPropagation();goDeep(4,this)">View Details →</span>
+              <span class="pp-btn pp-btn-ai" onclick="event.stopPropagation();askAI('Why is customer sentiment falling faster in Delhi NCR than elsewhere, and what should we do about it?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI about this
+              </span>
+            </div>
+          </div>
+
+          <div class="pinpoint" style="--sw-color:#F5B942" onclick="goDeep(2,this)">
+            <div class="pp-top">
+              <span class="pp-eyebrow">SR Volume — Work Order Summary</span>
+              <span class="pp-badge watch">WATCH</span>
+            </div>
+            <div class="pp-ai-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>
+              AI SUMMARY
+            </div>
+            <div class="pp-headline">North region is fielding more service work orders than any other region, and the gap is growing week over week.</div>
+            <div class="pp-why">The increase tracks the pre-monsoon demand shift — cooling and water heater service requests both rise as temperatures climb, giving enough lead time to shift staffing before backlog builds.</div>
+            <div class="pp-buckets">
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(2,'service-north-fcst')">North <b>&gt;</b> Central <b>&gt;</b> South — work order volume</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(2,'sr-backlog')">Backlog — trending down overall</span>
+            </div>
+            <div class="pp-actions">
+              <span class="pp-btn pp-btn-primary" onclick="event.stopPropagation();goDeep(2,this)">View Details →</span>
+              <span class="pp-btn pp-btn-ai" onclick="event.stopPropagation();askAI('What is driving the North region work order spike, and how should we prepare staffing?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI about this
+              </span>
+            </div>
+          </div>
+
+          <div class="pinpoint" style="--sw-color:#E1793B" onclick="goDeep(1,this)">
+            <div class="pp-top">
+              <span class="pp-eyebrow">Forecast — Weather &amp; Volume</span>
+              <span class="pp-badge watch">WATCH</span>
+            </div>
+            <div class="pp-ai-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>
+              AI SUMMARY
+            </div>
+            <div class="pp-headline">Rising temperatures in Delhi NCR are expected to drive a further increase in water heater installation demand over the coming weeks.</div>
+            <div class="pp-why">This is the same pattern that preceded the current spike — installation requests followed within days of temperatures climbing last month. The dashed line below runs through recent history too, so you can see how closely it has tracked what actually happened before trusting where it points next.</div>
+            <svg viewBox="0 0 640 140" style="width:100%;height:100px;margin:4px 0 10px">
+              <line x1="420" y1="0" x2="420" y2="140" stroke="#ECEFE9" stroke-dasharray="2 3" stroke-opacity=".25"/>
+              <text x="426" y="132" font-family="IBM Plex Mono" font-size="9.5" fill="#57625B">TODAY</text>
+              <path d="M20,90 L75,82 L130,88 L185,72 L240,65 L295,75 L350,60 L420,48" fill="none" stroke="#ECEFE9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M20,95 L75,86 L130,84 L185,76 L240,70 L295,70 L350,55 L420,48 L490,32 L560,20 L620,10" fill="none" stroke="#F5A15C" stroke-width="2.2" stroke-dasharray="5 4" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="20" cy="90" r="0" fill="none"/>
+            </svg>
+            <div class="pp-buckets">
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(1,'growth-wh')">Delhi NCR temperature — rising, above seasonal average</span>
+              <span class="pp-bucket" onclick="event.stopPropagation();showDrill(1,'growth-wh')">Forecast line — has tracked actuals closely so far</span>
+            </div>
+            <div class="pp-actions">
+              <span class="pp-btn pp-btn-primary" onclick="event.stopPropagation();goDeep(1,this)">View Details →</span>
+              <span class="pp-btn pp-btn-ai" onclick="event.stopPropagation();askAI('How reliable is the Delhi NCR weather forecast, and what should we prepare for?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI about this
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- PRIORITY AREAS + RECOMMENDED ACTIONS -->
+        <div class="top-grid" style="grid-template-columns:1.1fr 1fr;margin-top:26px">
+          <div class="focus-card">
+            <div class="focus-head">
+              <h3>Priority Areas</h3>
+              <span>AUTO-RANKED BY SHARE OF VOLUME + SEVERITY + GROWTH</span>
+            </div>
+            <div class="focus-row" onclick="goDeep(1,document.querySelector('.pinpoint'))"><span class="focus-rank">1</span><span class="focus-name">Water Heaters — Installation Issue</span><span class="focus-share">18.4%</span><span class="focus-badge crit">CRITICAL</span></div>
+            <div class="focus-row" onclick="goDeep(0,document.querySelector('.pinpoint'))"><span class="focus-rank">2</span><span class="focus-name">All Products — Product Defect / Quality</span><span class="focus-share">12.1%</span><span class="focus-badge crit">CRITICAL</span></div>
+            <div class="focus-row" onclick="goDeep(2,document.querySelector('.pinpoint'))"><span class="focus-rank">3</span><span class="focus-name">North Region — Call Volume Spike</span><span class="focus-share">9.6%</span><span class="focus-badge watch">WATCH</span></div>
+            <div class="focus-row" onclick="goDeep(0,document.querySelector('.pinpoint'))"><span class="focus-rank">4</span><span class="focus-name">Switchgear &amp; MCBs — Installation Issue</span><span class="focus-share">6.8%</span><span class="focus-badge watch">WATCH</span></div>
+            <div class="focus-row" onclick="goDeep(0,document.querySelector('.pinpoint'))"><span class="focus-rank">5</span><span class="focus-name">Fans — Delivery Delay</span><span class="focus-share">4.2%</span><span class="focus-badge stable">STABLE</span></div>
+          </div>
+
+          <div class="rec-card">
+            <div class="focus-head">
+              <h3>Recommended Actions</h3>
+              <span>PULLED FROM THIS WEEK'S AI ANALYSIS</span>
+            </div>
+            <div class="rec-row" onclick="showDrill(0,'wh-install')">
+              <div class="rec-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 13l4 4L19 7"/></svg></div>
+              <div class="rec-row-text"><b>Add installation technicians</b> in Delhi NCR for two weeks after any promotional sales spike.</div>
+            </div>
+            <div class="rec-row" onclick="showDrill(0,'rca-manufacturing')">
+              <div class="rec-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 13l4 4L19 7"/></svg></div>
+              <div class="rec-row-text"><b>Escalate to Product Quality</b> — the defect batch is a containment case, not a service issue.</div>
+            </div>
+            <div class="rec-row" onclick="showDrill(2,'service-north-fcst')">
+              <div class="rec-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 13l4 4L19 7"/></svg></div>
+              <div class="rec-row-text"><b>Rebalance staffing toward North</b> 10–14 days ahead of the forecasted call spike.</div>
+            </div>
+            <div class="rec-row" onclick="showDrill(4,'nps-tat')">
+              <div class="rec-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 13l4 4L19 7"/></svg></div>
+              <div class="rec-row-text"><b>Treat resolution time as the priority lever</b> — it's the common driver behind both volume and satisfaction.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SIGNAL LOG -->
+        <div class="termwrap">
+          <div class="term-head">
+            <div class="term-dots"><span></span><span></span><span></span></div>
+            <span class="term-title">Signal Log — Early Warning Feed</span>
+            <span class="term-count">4 ACTIVE</span>
+          </div>
+          <div class="term-body">
+            <div class="term-section"># <span class="grp-copper">upcoming risk</span> — forecasted, not yet happened</div>
+            <div class="term-line"><span class="term-ts">[T+7d]</span> <span class="term-sev sev-hi">●</span> Air purifier FVR drops sharply if the parts gap persists, resolution time exceeds target → <span class="term-act">rush filter kits</span></div>
+            <div class="term-line"><span class="term-ts">[Jun 01]</span> <span class="term-sev sev-med">●</span> Pre-monsoon demand flip: WH tickets falling, cooling tickets rising sharply → <span class="term-act">rebalance technicians</span></div>
+            <div class="term-line"><span class="term-ts">[Jun 06]</span> <span class="term-sev sev-med">●</span> Eid demand surge, UP/Bihar — mixer grinder tickets expected to spike → <span class="term-act">pre-stock hubs</span></div>
+
+            <div class="term-section"># <span class="grp-teal">needs attention now</span> — already happening</div>
+            <div class="term-line"><span class="term-ts">[ONGOING]</span> <span class="term-sev sev-low">●</span> Fan Flipkart rating falling — service-invisible quality signal → <span class="term-act">flag to Quality</span></div>
+
+            <div class="term-line" style="color:var(--ink-faint)">root@drishti:~$ <span class="term-cursor caret">▊</span></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- DEEP -->
+      <section class="view" data-view="deep" id="view-deep">
+        <div class="dp-select">
+          <div class="dp-chip active" onclick="setDp(0,this)"><span class="sw" style="background:#7C8CF5"></span>Pain Points Summary</div>
+          <div class="dp-chip" onclick="setDp(4,this)"><span class="sw" style="background:#4FB6E8"></span>Customer Voice — Sentiment</div>
+          <div class="dp-chip" onclick="setDp(2,this)"><span class="sw" style="background:#F5B942"></span>SR Volume — Work Orders</div>
+          <div class="dp-chip" onclick="showView('forecast')"><span class="sw" style="background:#E1793B"></span>Forecast — Weather &amp; Volume<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="width:11px;height:11px;margin-left:4px;opacity:.7"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        </div>
+
+        <!-- ============ PANE 0 — CUSTOMER PAIN POINTS (AI report format) ============ -->
+        <div class="dp-pane" data-pane="0">
+          <div class="plaque" style="border-left-color:#7C8CF5">
+            <div class="plaque-eyebrow" style="color:#7C8CF5">What's happening</div>
+            <div class="plaque-h">Water Heaters are generating more installation-related complaints than any other product this month, and the gap is widening — the same pattern is now showing up as the fastest month-over-month growth of any product line.</div>
+          </div>
+          <div class="dp-body">
+
+            <div class="report-section">
+              <div class="report-lbl ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>AI Summary</div>
+              <div class="report-text">Water Heaters and Fans are the two products drawing the most attention right now — Water Heaters for a fast-growing installation backlog, Fans for a product defect pattern that's showing up in public reviews faster than in internal resolution data. Delivery Delay and Switchgear &amp; MCBs, by contrast, are both improving and don't need attention this week.</div>
+              <div style="margin-top:16px">
+                <div class="rca-row"><span class="rca-label">Water Heaters — Installation</span><div class="rca-track"><div class="rca-fill" style="width:100%;background:#7C8CF5"></div></div><span class="rca-pct">Highest</span></div>
+                <div class="rca-row"><span class="rca-label">Fans — Product Defect</span><div class="rca-track"><div class="rca-fill" style="width:72%;background:#5D5FC0"></div></div><span class="rca-pct">High</span></div>
+                <div class="rca-row"><span class="rca-label">Delivery Delay</span><div class="rca-track"><div class="rca-fill" style="width:38%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Improving</span></div>
+                <div class="rca-row"><span class="rca-label">Switchgear &amp; MCBs</span><div class="rca-track"><div class="rca-fill" style="width:22%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Improving</span></div>
+              </div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl deep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Deep Insight</div>
+              <div class="report-text">The installation issue is concentrated in Delhi NCR, where booking volume has outpaced technician capacity — particularly in the two weeks following promotional sales spikes. This isn't a one-off: the same capacity gap is what's pushing Water Heaters to the top of the growth list too, since demand and complaints are really the same underlying story viewed two ways.</div>
+              <div class="report-text">Delivery-related complaints are easing across every region since the logistics SLA fix in April, so that pressure has genuinely come down. Product Defect complaints are holding steady in volume, but a closer look shows they trace almost entirely to a single manufacturing batch rather than a broad, ongoing quality problem.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>Root Cause</div>
+              <div class="report-text">Two separate causes are behind today's picture, and they call for different fixes. First, technician scheduling hasn't scaled with the recent surge in water heater bookings — that's a capacity problem, not a quality one, and it resolves with staffing, not a product fix. Second, a confirmed batch-level manufacturing defect is producing heating-element failures that show up identically across three cities within the same purchase window — that geographic spread is what rules out installation or usage variance and points squarely at the product itself.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>Recommendations</div>
+              <div class="rec-list">
+                <div class="rec-item"><span class="rec-item-num">1</span><span class="rec-item-text">Add technician capacity to the installation queue in Delhi NCR for two weeks following any promotional sales spike — this is when the scheduling gap consistently opens up.</span></div>
+                <div class="rec-item"><span class="rec-item-num">2</span><span class="rec-item-text">Escalate the manufacturing defect to the Product Quality team as a containment case, not a service-fix case — the remaining gap is upstream of service.</span></div>
+                <div class="rec-item"><span class="rec-item-num">3</span><span class="rec-item-text">Flag the Fans product-defect pattern to Quality directly — public ratings are catching this issue before internal resolution data does.</span></div>
+                <div class="rec-item"><span class="rec-item-num">4</span><span class="rec-item-text">Keep current logistics SLA monitoring in place for Delivery Delay — it's working, no new action needed there.</span></div>
+                <div class="rec-item"><span class="rec-item-num">5</span><span class="rec-item-text">No action needed on Switchgear &amp; MCBs this week — volumes are stable to improving across the board.</span></div>
+              </div>
+            </div>
+
+            <div class="report-chat-cta">
+              <div class="report-chat-cta-text"><b>Want more detail?</b> Ask Drishti directly — e.g. "which technicians have the lowest installation backlog in Delhi NCR right now?"</div>
+              <span class="report-chat-btn" onclick="askAI('Which technicians have the lowest installation backlog in Delhi NCR right now, and how should we reassign work?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI
+              </span>
+            </div>
+
+          </div>
+          <div class="next-link" onclick="showView('forecast')"><span>Next → See the 30-day forecast for this area</span></div>
+        </div>
+
+        <!-- ============ PANE 2 — SR VOLUME / WORK ORDER SUMMARY (AI report format) ============ -->
+        <div class="dp-pane" data-pane="2" style="display:none">
+          <div class="plaque" style="border-left-color:#F5B942">
+            <div class="plaque-eyebrow" style="color:#F5B942">What's happening</div>
+            <div class="plaque-h">North region is generating more service work orders than any other region right now, and the gap is growing week over week as the pre-monsoon demand shift begins.</div>
+          </div>
+          <div class="dp-body">
+
+            <div class="report-section">
+              <div class="report-lbl ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>AI Summary</div>
+              <div class="report-text">Call volume is rising fastest in North region, well ahead of Central and South, while East is actually trending down. Backlog overall is trending in the right direction, but that North region spike is large enough to reverse that if staffing doesn't shift ahead of it.</div>
+              <div style="margin-top:16px">
+                <div class="rca-row"><span class="rca-label">North</span><div class="rca-track"><div class="rca-fill" style="width:100%;background:#F5B942"></div></div><span class="rca-pct">Highest</span></div>
+                <div class="rca-row"><span class="rca-label">Central</span><div class="rca-track"><div class="rca-fill" style="width:55%;background:#C48A1F"></div></div><span class="rca-pct">Medium</span></div>
+                <div class="rca-row"><span class="rca-label">South</span><div class="rca-track"><div class="rca-fill" style="width:30%;background:#8A6A28"></div></div><span class="rca-pct">Low</span></div>
+                <div class="rca-row"><span class="rca-label">East</span><div class="rca-track"><div class="rca-fill" style="width:18%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Improving</span></div>
+              </div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl deep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Deep Insight</div>
+              <div class="report-text">The North region increase tracks the pre-monsoon demand shift — cooling and water heater service requests both rise as temperatures climb, and this year's early heatwave has pulled that pattern forward. Weather-adjusted forecasting attributes a meaningful share of the projected spike directly to monsoon-linked demand, not to a service quality issue or a one-off event.</div>
+              <div class="report-text">East region's decline is a separate story — monsoon onset simply reaches that region later in the season, so the near-term picture there is genuinely calmer, not a data gap.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>Root Cause</div>
+              <div class="report-text">This is a forecastable, weather-driven demand shift rather than an operational breakdown — current staffing levels were set before this year's early heatwave was flagged, so the plan simply hasn't caught up with the signal yet. The good news is the lead time: this pattern is visible with enough runway to rebalance staffing before it turns into backlog.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>Recommendations</div>
+              <div class="rec-list">
+                <div class="rec-item"><span class="rec-item-num">1</span><span class="rec-item-text">Rebalance technician and call-center staffing toward North region 10–14 days ahead of the forecasted spike — the weather signal gives enough lead time to shift capacity before backlog builds.</span></div>
+                <div class="rec-item"><span class="rec-item-num">2</span><span class="rec-item-text">Consider temporarily reallocating East region capacity toward North while the seasonal gap between the two regions persists.</span></div>
+                <div class="rec-item"><span class="rec-item-num">3</span><span class="rec-item-text">Hold Central and South staffing steady — their forecasted change is modest and doesn't warrant a shift yet.</span></div>
+                <div class="rec-item"><span class="rec-item-num">4</span><span class="rec-item-text">Re-check the forecast weekly through the pre-monsoon window — the North region pattern can move quickly once temperatures cross the seasonal threshold.</span></div>
+              </div>
+            </div>
+
+            <div class="report-chat-cta">
+              <div class="report-chat-cta-text"><b>Want more detail?</b> Ask Drishti directly — e.g. "how many additional technicians does North region need this week?"</div>
+              <span class="report-chat-btn" onclick="askAI('How many additional technicians does North region need this week to stay ahead of the forecasted call volume spike?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI
+              </span>
+            </div>
+
+          </div>
+          <div class="next-link" onclick="showView('forecast')"><span>Next → See the 30-day forecast for this area</span></div>
+        </div>
+
+        <!-- ============ PANE 4 — CUSTOMER VOICE (Sentiment Summary, AI report format) ============ -->
+        <div class="dp-pane" data-pane="4" style="display:none">
+          <div class="plaque" style="border-left-color:#4FB6E8">
+            <div class="plaque-eyebrow" style="color:#4FB6E8">What's happening</div>
+            <div class="plaque-h">Customer sentiment is holding steady nationally, but Delhi NCR is pulling satisfaction down faster than anywhere else this month — the same pattern showing up in both NPS and CSAT.</div>
+          </div>
+          <div class="dp-body">
+
+            <div class="report-section">
+              <div class="report-lbl ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 L14 9 L21 11 L14 13 L12 20 L10 13 L3 11 L10 9 Z"/></svg>AI Summary</div>
+              <div class="report-text">NPS and CSAT are both softening in Delhi NCR while holding steady everywhere else — Pune and Bangalore currently have the strongest customer sentiment of any city. Social sentiment on Locobuzz and review platforms is showing the same regional pattern, and it's moving a few days ahead of the formal survey scores.</div>
+              <div style="margin-top:16px">
+                <div class="rca-row"><span class="rca-label">Pune</span><div class="rca-track"><div class="rca-fill" style="width:100%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Strongest</span></div>
+                <div class="rca-row"><span class="rca-label">Bangalore</span><div class="rca-track"><div class="rca-fill" style="width:85%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Strong</span></div>
+                <div class="rca-row"><span class="rca-label">Kolkata</span><div class="rca-track"><div class="rca-fill" style="width:50%;background:#F5B942"></div></div><span class="rca-pct">Softening</span></div>
+                <div class="rca-row"><span class="rca-label">Delhi NCR</span><div class="rca-track"><div class="rca-fill" style="width:20%;background:#E1793B"></div></div><span class="rca-pct" style="color:#E1793B">Weakest</span></div>
+              </div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl deep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Deep Insight</div>
+              <div class="report-text">Resolution time and customer satisfaction move together more closely than any other pair of signals we track — when TAT worsens in a region, both NPS and CSAT reliably follow within days. Complaint volume tracks the same pattern, which means all three are really describing one underlying issue in Delhi NCR, not three separate ones.</div>
+              <div class="report-text">Social sentiment tends to shift a few days before formal survey responses and service tickets catch up to the same issue — customers talk about a problem publicly before they file it formally or respond to a CSAT survey. That gives an early-warning window that's currently underused.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl root"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>Root Cause</div>
+              <div class="report-text">Sentiment isn't declining on its own — it's a downstream effect of the same technician capacity gap driving Delhi NCR's installation backlog. Resolution time is the common driver behind both complaint volume and satisfaction; fixing it should lift NPS and CSAT together without needing a separate customer-experience initiative.</div>
+            </div>
+
+            <div class="report-section">
+              <div class="report-lbl rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>Recommendations</div>
+              <div class="rec-list">
+                <div class="rec-item"><span class="rec-item-num">1</span><span class="rec-item-text">Treat resolution time as the priority lever for Delhi NCR sentiment recovery, not a separate CX campaign — fixing it should move NPS, CSAT, and complaint volume together.</span></div>
+                <div class="rec-item"><span class="rec-item-num">2</span><span class="rec-item-text">Start monitoring social sentiment as a genuine early-warning signal for satisfaction scores — it consistently moves first.</span></div>
+                <div class="rec-item"><span class="rec-item-num">3</span><span class="rec-item-text">Prioritize resolution-time fixes on the longest-open tickets in Delhi NCR first — that's where the sentiment impact is largest.</span></div>
+                <div class="rec-item"><span class="rec-item-num">4</span><span class="rec-item-text">Benchmark Delhi NCR's resolution time against Pune and Bangalore — the two strongest-sentiment cities — to size the gap concretely.</span></div>
+              </div>
+            </div>
+
+            <div class="report-chat-cta">
+              <div class="report-chat-cta-text"><b>Want more detail?</b> Ask Drishti directly — e.g. "how much would fixing Delhi NCR's resolution time improve NPS?"</div>
+              <span class="report-chat-btn" onclick="askAI('How much would fixing Delhi NCR resolution time improve NPS and CSAT, based on the historical relationship between the two?')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></svg>
+                Ask AI
+              </span>
+            </div>
+
+          </div>
+          <div class="next-link" onclick="showView('forecast')"><span>Next → See the 30-day forecast for this area</span></div>
+        </div>
+
+      </section>
+
+      <!-- FORECAST -->
+      <section class="view" data-view="forecast" id="view-forecast">
+        <div class="plaque" style="border-left-color:#E1793B">
+          <div class="plaque-eyebrow" style="color:#E1793B">What's coming</div>
+          <div class="plaque-h">Complaint volume is forecast to run well above current levels over the next 30 days — three external signals give enough lead time to act before the spike lands.</div>
+        </div>
+
+        <div class="dp-body">
+          <div class="blk">
+            <div class="blk-head">
+              <div><h3>Complaint volume — actual vs 30-day forecast</h3><p>ALL CATEGORIES · DAILY COUNT · 80% CONFIDENCE BAND</p></div>
+              <div class="legend">
+                <span class="legend-item"><span class="legend-sw" style="background:#ECEFE9"></span>Actual</span>
+                <span class="legend-item"><span class="legend-sw dash"></span>Forecast</span>
+                <span class="legend-item"><span class="legend-sw" style="background:#E1793B;opacity:.3"></span>Band</span>
+              </div>
+            </div>
+            <svg viewBox="0 0 900 220" style="width:100%;height:220px">
+              <line x1="0" y1="20" x2="900" y2="20" stroke="#1B211C"/>
+              <line x1="0" y1="70" x2="900" y2="70" stroke="#1B211C"/>
+              <line x1="0" y1="120" x2="900" y2="120" stroke="#1B211C"/>
+              <line x1="0" y1="170" x2="900" y2="170" stroke="#1B211C"/>
+              <path d="M540,110 C 600,90 660,55 720,38 C 770,24 830,12 900,6 L900,80 C 830,74 770,82 720,92 C 660,108 600,132 540,150 Z" fill="#E1793B" opacity=".12"/>
+              <path d="M0,150 C60,148 100,160 160,140 C 220,120 260,150 320,130 C 380,112 420,140 480,118 C 510,108 525,110 540,110" fill="none" stroke="#ECEFE9" stroke-width="2.4" stroke-linecap="round"/>
+              <path d="M0,158 C60,155 100,168 160,148 C 220,126 260,155 320,136 C 380,120 420,145 480,124 C 510,114 525,112 540,110 C 600,90 660,55 720,38 C 770,24 830,12 900,6" fill="none" stroke="#E1793B" stroke-width="2.4" stroke-dasharray="6 5" stroke-linecap="round"/>
+              <line x1="540" y1="0" x2="540" y2="220" stroke="#ECEFE9" stroke-dasharray="2 3" stroke-opacity=".25"/>
+              <circle cx="540" cy="110" r="4.5" fill="#ECEFE9"/>
+              <text x="546" y="205" font-family="IBM Plex Mono" font-size="10.5" fill="#57625B">TODAY</text>
+              <circle cx="900" cy="6" r="4.5" fill="#E1793B"/>
+              <text x="640" y="18" font-family="IBM Plex Mono" font-size="10.5" fill="#E1793B">Projected — Day 30</text>
+            </svg>
+            <div class="mini-stat-row" style="margin-top:2px;margin-bottom:14px"><div class="mini-stat"><span style="font-weight:500;color:var(--ink-soft);text-transform:none;letter-spacing:0;font-family:'IBM Plex Sans';font-size:12px">The dashed line also runs back through recent history — it has tracked actual volume closely, which is why the forward projection can be trusted.</span></div></div>
+            <div class="stat-strip">
+              <div class="stat"><b style="color:#E1793B">Above run rate</b><span>vs run rate</span></div>
+              <div class="stat"><b>High</b><span>forecast confidence</span></div>
+              <div class="stat"><b>Mid-month</b><span>peak breach risk</span></div>
+              <div class="stat"><b>Sufficient</b><span>weather lead time</span></div>
+            </div>
+          </div>
+
+          <div class="blk">
+            <div class="blk-head"><div><h3>Forecast by category</h3><p>PROJECTED VOLUME CHANGE, NEXT 30 DAYS</p></div></div>
+            <div class="rca-row"><span class="rca-label">Installation Issue</span><div class="rca-track"><div class="rca-fill" style="width:100%;background:#E1793B"></div></div><span class="rca-pct">Largest rise</span></div>
+            <div class="rca-row"><span class="rca-label">Warranty Claim Delay</span><div class="rca-track"><div class="rca-fill" style="width:28%;background:#B96530"></div></div><span class="rca-pct">2nd</span></div>
+            <div class="rca-row"><span class="rca-label">Product Defect / Quality</span><div class="rca-track"><div class="rca-fill" style="width:17%;background:#8A4B26"></div></div><span class="rca-pct">3rd</span></div>
+            <div class="rca-row"><span class="rca-label">Billing &amp; AMC Refund</span><div class="rca-track"><div class="rca-fill" style="width:11%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Improving</span></div>
+            <div class="rca-row"><span class="rca-label">Delivery Delay</span><div class="rca-track"><div class="rca-fill" style="width:50%;background:#3FE0B5"></div></div><span class="rca-pct" style="color:#3FE0B5">Improving most</span></div>
+          </div>
+
+          <div class="report-chat-cta" style="margin-top:0;margin-bottom:30px">
+            <div class="report-chat-cta-text"><b>Service call volume is forecasted separately</b> — North region is the standout, with a 30-day outlook driven by the same weather signal shown above. See the full breakdown and staffing recommendation.</div>
+            <span class="report-chat-btn" style="background:rgba(245,185,66,.12);border-color:rgba(245,185,66,.35);color:var(--amber)" onclick="goDeep(2,document.querySelector('.pinpoint'))">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              View Service &amp; Call Volume
+            </span>
+          </div>
+
+          <div class="blk">
+            <div class="blk-head"><div><h3>External leading indicators</h3><p>SIGNALS THAT MOVE AHEAD OF THE COMPLAINT DATA</p></div></div>
+            <div class="chips-row">
+              <span class="src-chip">◆ IMD — heatwave forecast, May 14–18</span>
+              <span class="src-chip">◆ Weather feed — monsoon onset, Jun 15</span>
+              <span class="src-chip">◆ Festival calendar — Eid demand, UP/Bihar, Jun 6</span>
+            </div>
+          </div>
+
+          <div class="rec">
+            <div class="rec-lbl">✦ AI Recommendation</div>
+            <div class="rec-text">Act on the heatwave and monsoon signals now, not when the ticket volume actually arrives — pre-position water heater installation capacity in Delhi NCR and rebalance technicians toward North region 10–14 days ahead of each forecasted event.</div>
+            <div class="rec-foot">
+              <div class="fb-group"><button class="fb-btn">👍</button><button class="fb-btn">👎</button></div>
+              <span class="rec-src">SOURCES: CRM · WEATHER FEED · REGIONAL FESTIVAL CALENDAR</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GENIE CHAT -->
+      <section class="view" data-view="genie" id="view-genie">
+        <div class="comm">
+          <div class="comm-head">
+            <span class="dot led-live"></span>
+            <b>GENIE CHAT</b>
+            <span>STRUCTURED Q&amp;A · SQL / GENIE SPACE · CONSUMER INTELLIGENCE</span>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:7px;font:600 9.5px/1 'IBM Plex Mono';letter-spacing:.3px;color:var(--teal);background:rgba(63,224,181,.1);border:1px solid rgba(63,224,181,.3);padding:5px 10px;border-radius:99px" title="Multi-step reasoning across sources, not single-turn lookup — backend setting, confirm with Harsh's team">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M13 2 3 14h7v8l10-12h-7z"/></svg>
+              AGENT MODE
+            </span>
+          </div>
+          <div class="log">
+            <div class="log-line">
+              <span class="log-ts">09:02</span>
+              <span class="log-who ai">DRISHTI</span>
+              <div class="log-txt">Good morning, Niya. Water heater tickets in Delhi NCR are running 52% above SLA — want the breakdown, or should I check something else first?</div>
+            </div>
+            <div class="log-line">
+              <span class="log-ts">09:03</span>
+              <span class="log-who you">NIYA</span>
+              <div class="log-txt">Why are water heater tickets spiking in Delhi?</div>
+            </div>
+            <div class="log-line">
+              <span class="log-ts">09:03</span>
+              <span class="log-who ai">DRISHTI</span>
+              <div class="log-txt">
+                A single manufacturing batch (MH-WH-2603 to 2619) is driving 63% of this month's SLA breaches — technicians are spending 40% longer on partial repairs due to a parts shortage.
+                <svg class="log-chart" viewBox="0 0 300 56">
+                  <path d="M0,42 40,38 80,32 120,36 160,22 200,26 240,10 280,14 300,4" fill="none" stroke="#E1793B" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="300" cy="4" r="3" fill="#E1793B"/>
+                </svg>
+                <div class="log-meta"><span class="log-tag">queried: work_order</span><span class="log-tag">queried: quality_defect_signals</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="chip-row">
+            <div class="chip">What is driving NPS down this month?</div>
+            <div class="chip">Forecast spare parts, next 14 days</div>
+            <div class="chip">Which ASP has highest repeat visits?</div>
+          </div>
+          <div class="cmdline">
+            <span class="prompt">&gt;</span>
+            <input type="text" id="genie-input" placeholder="Ask Drishti a quick, data-grounded question…"/>
+            <span class="caret" style="width:7px;height:15px;background:#3FE0B5"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESEARCH AGENT -->
+      <section class="view" data-view="research" id="view-research">
+        <div class="comm" style="max-width:820px">
+          <div class="comm-head">
+            <span class="dot led-live" style="color:#4FB6E8;background:#4FB6E8"></span>
+            <b>RESEARCH AGENT</b>
+            <span>MULTI-AGENT SUPERVISOR · CROSS-SPACE SYNTHESIS</span>
+          </div>
+
+          <div class="log-line" style="padding-top:0">
+            <span class="log-ts">10:14</span>
+            <span class="log-who you">NIYA</span>
+            <div class="log-txt">Why is Delhi NCR underperforming on service metrics, and what should we do about it?</div>
+          </div>
+
+          <div class="agent-chain">
+            <div class="agent-step"><div class="agent-connector"></div><div class="agent-node done">✓</div><span class="agent-label">Consumer Insights Agent</span></div>
+            <div class="agent-step"><div class="agent-connector"></div><div class="agent-node done">✓</div><span class="agent-label">Product Quality Agent</span></div>
+            <div class="agent-step"><div class="agent-connector"></div><div class="agent-node done">✓</div><span class="agent-label">Competitive Intel Agent</span></div>
+            <div class="agent-step"><div class="agent-node done">✓</div><span class="agent-label">Synthesis</span></div>
+          </div>
+
+          <div class="report-block">
+            <div class="report-h">Findings</div>
+            <div class="report-body">Delhi NCR shows a compounding pattern across three independent data sources: 63% of this month's SLA-breaching water heater tickets trace to one manufacturing batch, Locobuzz shows a 34% spike in Delhi-specific share of voice on service complaints, and Flipkart reviews in the region echo the same "complaint raised, still waiting" language found in the ticketing data.</div>
+          </div>
+          <div class="report-block">
+            <div class="report-h">Root Cause</div>
+            <div class="report-body">The Product Quality Agent confirms batch MH-WH-2603–2619 as the upstream cause. The Consumer Insights Agent independently confirms the same geography and timeframe from unstructured review data — this is not a service-capacity problem, it's a parts and batch-containment problem being experienced as a service problem.</div>
+          </div>
+
+          <div class="chart-block" style="margin:18px 0">
+            <svg viewBox="0 0 760 130" style="width:100%;height:130px">
+              <line x1="0" y1="20" x2="760" y2="20" stroke="#1B211C"/><line x1="0" y1="65" x2="760" y2="65" stroke="#1B211C"/><line x1="0" y1="110" x2="760" y2="110" stroke="#1B211C"/>
+              <path d="M0,95 80,88 160,80 240,70 320,55 400,42 480,60 560,50 640,38 720,26 760,20" fill="none" stroke="#4FB6E8" stroke-width="2.2" stroke-linecap="round"/>
+              <text x="8" y="14" font-family="IBM Plex Mono" font-size="9.5" fill="#57625B">DELHI NCR SHARE OF VOICE — SERVICE COMPLAINTS, 90 DAYS</text>
+            </svg>
+          </div>
+
+          <div class="rec">
+            <div class="rec-lbl">✦ Recommendation</div>
+            <div class="rec-text">Treat this as a batch-containment escalation, not a staffing issue: proactively replace the 4,200 affected units and auto-escalate any Delhi NCR water-heater ticket past 20 hours. Do not add technician headcount to the region — the underlying driver is parts, not capacity.</div>
+            <div class="rec-foot">
+              <div class="fb-group"><button class="fb-btn">👍</button><button class="fb-btn">👎</button></div>
+              <span class="rec-src">3 AGENTS · 6 SOURCES · SYNTHESIZED IN 4.2s</span>
+            </div>
+          </div>
+
+          <div class="chips-row" style="margin-top:16px">
+            <span class="src-chip">◆ CRM — service ticketing</span>
+            <span class="src-chip">◆ SAP — quality &amp; batch records</span>
+            <span class="src-chip">◆ Locobuzz — share of voice</span>
+            <span class="src-chip">◆ Flipkart — review NLP</span>
+            <span class="src-chip">◆ Work Order — category × region</span>
+            <span class="src-chip">◆ IMD — seasonal context</span>
+          </div>
+
+          <div class="cmdline" style="margin-top:20px">
+            <span class="prompt">&gt;</span>
+            <input type="text" placeholder="Ask Drishti a research question that spans multiple sources…"/>
+            <span class="caret" style="width:7px;height:15px;background:#4FB6E8"></span>
+          </div>
+        </div>
+      </section>
+
+      </div>
+      <!-- ============ /SERVICE ============ -->
+
+    </main>
+  </div>
+
+  <div class="foot">
+    <span>DRISHTI AI · CONSUMER &amp; PRODUCT INTELLIGENCE HUB · PANEL v3</span>
+    <span>SOURCES: CRM · WORK ORDER · SAP · STACKLINE · FLIPKART (89,520) · LOCOBUZZ · MOENGAGE · IMD</span>
+  </div>
+</div>
+
+<!-- RICH DRILL-DOWN MODAL -->
+<div class="modal-backdrop" id="drill-modal" onclick="if(event.target===this) closeDrill()">
+  <div class="modal-card" style="max-width:880px" id="drill-modal-card"></div>
+</div>
+
+<div class="chart-tip" id="chart-tip"></div>
+
+<script>
+function showView(id, el){
+  const panel = document.querySelector('.fn-panel.active');
+  panel.querySelectorAll(':scope > .view').forEach(s=>s.classList.remove('active'));
+  panel.querySelector('.view[data-view="'+id+'"]').classList.add('active');
+  document.querySelectorAll('.rail-item').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active'); else document.querySelector('.rail-item[data-view="'+id+'"]').classList.add('active');
+}
+// jumps a pillar card's "Ask AI about this" straight into Genie Chat with
+// the question already typed in, so the user just has to hit enter
+function askAI(question){
+  showView('genie');
+  const input = document.getElementById('genie-input');
+  if(input){
+    input.value = question;
+    input.focus();
+  }
+}
+function setFn(el, fn){
+  document.querySelectorAll('.rocker').forEach(r=>r.classList.remove('active'));
+  el.classList.add('active');
+  if(!fn) return; // Brand / Product — switch only, no panel wired yet
+  const target = document.querySelector('.fn-panel[data-fn="'+fn+'"]');
+  if(!target) return;
+  document.querySelectorAll('.fn-panel').forEach(p=>p.classList.remove('active'));
+  target.classList.add('active');
+  showView('overview');
+}
+// clicking a pinpoint card jumps straight to Deep Insights with the matching pane shown
+function goDeep(i, el){
+  if(i===1){ showView('forecast'); return; } // Forecast pillar has its own dedicated tab, not a Deep Insights pane
+  showView('deep');
+  const panel = (el && el.closest) ? el.closest('.fn-panel') : document.querySelector('.fn-panel.active');
+  panel.querySelectorAll('.dp-chip').forEach((c,idx)=>c.classList.toggle('active', idx===i));
+  panel.querySelectorAll('.dp-pane').forEach(p=>p.style.display = (p.dataset.pane==String(i)) ? '' : 'none');
+}
+function setDp(i, el){
+  const panel = el.closest('.fn-panel');
+  panel.querySelectorAll('.dp-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  panel.querySelectorAll('.dp-pane').forEach(p=>p.style.display = (p.dataset.pane==String(i)) ? '' : 'none');
+}
+// ============ RICH DRILL-DOWN SYSTEM ============
+// Every heatmap cell / bar opens an inline panel (not a modal) with:
+// 3 supporting mini-charts, a correlation table, and a confidence-scored
+// recommendation — matching the depth of the reference mockup's Explorer panel.
+
+// ============ CHART TOOLTIP ============
+function tip(evt, html){
+  const t = document.getElementById('chart-tip');
+  t.innerHTML = html;
+  t.style.display = 'block';
+  tipMove(evt);
+}
+function tipMove(evt){
+  const t = document.getElementById('chart-tip');
+  const pad = 16;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  const rect = t.getBoundingClientRect();
+  if(x + rect.width > window.innerWidth - 10) x = evt.clientX - rect.width - pad;
+  if(y + rect.height > window.innerHeight - 10) y = evt.clientY - rect.height - pad;
+  t.style.left = x+'px'; t.style.top = y+'px';
+}
+function tipHide(){
+  document.getElementById('chart-tip').style.display = 'none';
+}
+
+function seed(str){ let h=0; for(let i=0;i<str.length;i++){ h=(h*31+str.charCodeAt(i))>>>0; } return h; }
+function srand(n){ const x=Math.sin(n)*10000; return x-Math.floor(x); }
+
+function sparkSVG(sd, w, h, bias, color){
+  const { path, pts } = sparkData(sd, w, h, bias);
+  const gridLines = [0.25,0.5,0.75].map(f => `<line x1="0" y1="${(h*f).toFixed(1)}" x2="${w}" y2="${(h*f).toFixed(1)}" stroke="#1B211C"/>`).join('');
+  const line = `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // dots only, no printed values — the shape of the line is the point, not a specific number
+  const markers = pts.map((p,i) => {
+    const isEnd = i === pts.length-1;
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${isEnd?5:3.5}" fill="${isEnd?color:'#0A0E0C'}" stroke="${color}" stroke-width="2"/>`;
+  }).join('');
+  const endLabel = `<text x="${pts[pts.length-1].x.toFixed(1)}" y="16" font-family="IBM Plex Mono" font-size="10" font-weight="600" fill="${color}" text-anchor="end">NOW</text>`;
+  return gridLines + line + markers + endLabel;
+}
+function sparkData(sd, w, h, bias){
+  // bias: -1 declining, 0 flat, 1 rising — shapes the seeded trend
+  let pts=[];
+  for(let i=0;i<8;i++){
+    const r = srand(sd+i*7.3);
+    const drift = bias * (i/7) * 0.5;
+    const v = 0.5 + (r-0.5)*0.5 + drift*0.5;
+    const yFrac = Math.max(0.08,Math.min(0.95,v));
+    pts.push({ x:(w/7)*i, y:h-yFrac*h });
+  }
+  const path = pts.map((p,i)=> (i===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
+  return { path, pts };
+}
+function miniBars(sd, labels, color){
+  // relative bar length only — no printed percentage, per the "no numbers to leadership" rule
+  let html='';
+  labels.forEach((lb,i)=>{
+    const r = 30 + srand(sd+i*3.1)*70;
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">'+
+      '<span style="width:88px;font:500 11px \'IBM Plex Sans\';color:var(--ink-faint);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+lb+'</span>'+
+      '<div style="flex:1;height:10px;background:var(--panel3);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+r.toFixed(0)+'%;background:'+color+';border-radius:99px"></div></div>'+
+      '</div>';
+  });
+  return html;
+}
+
+function corrColor(r){
+  const n = Math.abs(r);
+  if(n>=0.75) return {bg:'rgba(79,182,232,.22)',fg:'#4FB6E8'};
+  if(n>=0.55) return {bg:'rgba(79,182,232,.14)',fg:'#7CC7E8'};
+  return {bg:'rgba(255,255,255,.06)',fg:'#96A199'};
+}
+function corrWord(r){
+  const n = Math.abs(r);
+  if(n>=0.75) return 'Strong link';
+  if(n>=0.55) return 'Moderate link';
+  return 'Weak link';
+}
+function confWord(pct){
+  if(pct>=75) return 'High confidence';
+  if(pct>=55) return 'Medium confidence';
+  return 'Low confidence';
+}
+
+// Hero entries — hand-authored, specific numbers and reasoning
+const DRILL_HERO = {
+  'wh-install': { title:'Water Heaters × Installation Issue', color:'#7C8CF5', vol:310,
+    ctx:'The single largest concentration on the grid — no other product/category pair comes close.',
+    why:'Technician-led installations are being booked faster than technician capacity can absorb — the gap opens up specifically in the two weeks following a promotional sales spike, when order volume jumps but staffing doesn\'t.',
+    corr:[['Complaint Volume × NPS','-0.87','As this cell rises, overall NPS falls almost in lockstep.'],
+          ['Sentiment × TAT','0.74','Negative sentiment on this theme tracks resolution delay closely.']],
+    rec:'Add technician capacity to the installation queue for two weeks following any promotional sales spike — this is when the scheduling gap consistently opens up.', conf:88, bias:1 },
+  'fans-defect': { title:'Fans × Product Defect', color:'#7C8CF5', vol:210,
+    ctx:'Second-largest concentration on the grid, behind Water Heaters × Installation.',
+    why:'A quality issue in a recent fan motor batch is generating defect complaints faster than it shows up in formal resolution data — public review ratings are catching it before internal metrics do.',
+    corr:[['Star Rating Trend','-0.68','Marketplace fan ratings have declined as this cell has grown.'],
+          ['Repeat Complaint Rate','0.59','A meaningful share of these are repeat complainants.']],
+    rec:'Flag to Quality as a service-invisible signal — resolution data alone understates how much this is hurting public perception.', conf:74, bias:1 },
+  'north-install': { title:'North Region × Installation Issue', color:'#F5B942', vol:220,
+    ctx:'The largest open-ticket concentration on the regional grid.',
+    why:'Water heater installation demand has spiked with the early heatwave, and North region technician staffing hasn\'t scaled to match it — the same capacity gap driving the Water Heaters product-level spike.',
+    corr:[['Weather-Driven Volume Uplift %','0.71','Heatwave-driven water heater demand is concentrated here.'],
+          ['Capacity Gap (FTE)','0.66','Technician staffing has not kept pace with this region\'s demand growth.']],
+    rec:'Rebalance technician and call-center staffing toward North region 10–14 days ahead of the forecasted heatwave spike.', conf:81, bias:1 },
+  'east-delivery': { title:'East Region × Delivery Delay', color:'#F5B942', vol:130,
+    ctx:'A distinct hot spot, separate from the North region pattern — a different driver.',
+    why:'Monsoon-linked logistics disruption reaches this region earlier than others, and it traces to delivery-window performance from one specific third-party logistics partner, not a regional demand spike.',
+    corr:[['Monsoon Onset Timing','0.69','East sees monsoon-linked logistics disruption earlier than other regions.'],
+          ['Logistics Partner SLA Breach','0.58','Tied to the same third-party logistics partner flagged in Root Cause.']],
+    rec:'Review logistics partner SLA performance specifically for East region routes ahead of monsoon onset.', conf:70, bias:1 },
+  'growth-wh': { title:'Water Heaters — Growth Rate', color:'#E1793B', vol:24,
+    ctx:'The fastest-growing product line this month, by a clear margin.',
+    why:'Demand for new installs is outpacing technician availability, and the timing tracks tightly with the early heatwave in Delhi NCR — this is a capacity problem showing up as a growth number, not organic demand alone.',
+    corr:[['Weather Correlation Coefficient','0.71','Growth tracks the early heatwave closely.'],
+          ['Forecast Confidence Interval','78%','Model confidence for the 30-day forward projection.']],
+    rec:'Pre-position installation technician capacity in Delhi NCR ahead of the next forecasted heatwave — demand has historically risen within 5 days of a heat event being flagged.', conf:78, bias:1 },
+  'rca-manufacturing': { title:'Manufacturing / QC Gap', color:'#D9739F', vol:42,
+    ctx:'The single largest cause behind Product Defect complaints — well ahead of every other cause.',
+    why:'A confirmed batch-level manufacturing defect is producing identical heating-element failures across three cities within the same purchase window — that geographic spread is what confirms it\'s a product issue, not installation or usage variance.',
+    corr:[['Cross-Channel Cause Confirmation','0.83','Same root cause corroborated across CRM, Locobuzz and Flipkart.'],
+          ['Resolution Effectiveness Index','0.64','Post-fix effectiveness for cases where this cause was addressed.']],
+    rec:'Escalate to the product quality team as a containment case, not a service-fix case — the remaining gap is upstream of service.', conf:91, bias:0 },
+  'nps-tat': { title:'NPS × TAT', color:'#4FB6E8', vol:-0.87,
+    ctx:'The strongest relationship anywhere in the data.',
+    why:'As resolution time increases, customers rate their experience worse almost immediately — TAT is not just correlated with NPS, it\'s the most direct lever leadership has for moving NPS at all.',
+    corr:[['Lead-Lag (days)','2–3','Sentiment shifts 2–3 days before formal SR tickets reflect the same issue.'],
+          ['Cross-Source Consistency','0.79','CRM, Locobuzz and reviews agree on direction.']],
+    rec:'Treat TAT as the priority lever, not NPS directly — it is the common driver behind both complaint volume and NPS movement.', conf:87, bias:-1 },
+  'tat-compvol': { title:'TAT × Complaint Volume', color:'#4FB6E8', vol:0.74,
+    ctx:'A strong, consistent relationship.',
+    why:'When technicians take longer to resolve issues, customers re-contact or escalate more often — each of those re-contacts counts as a new complaint, so slow TAT directly inflates complaint volume, not just satisfaction.',
+    corr:[['Capacity Gap (FTE)','0.66','TAT degrades further as staffing falls short of forecasted demand.'],
+          ['SR Backlog','0.69','Backlog and TAT reinforce each other once either starts climbing.']],
+    rec:'Address backlog and TAT together — fixing one without the other tends to snap back within a few weeks.', conf:76, bias:1 },
+  'city-delhi': { title:'Delhi NCR', color:'#E1793B', vol:'26h TAT · 58 NPS',
+    ctx:'The clear outlier on the chart — worst resolution time and worst satisfaction score of any city, by a wide margin.',
+    why:'This city combines the slowest resolution time with the lowest satisfaction score, and both trace back to the same root cause — the technician capacity shortfall behind the water heater installation surge.',
+    corr:[['Complaint Volume × NPS','-0.87','As Delhi NCR\'s complaint volume climbs, its NPS keeps dropping in step.'],
+          ['Weather-Driven Volume Uplift %','0.71','A large share of this city\'s load traces to heatwave-driven water heater demand.']],
+    rec:'Treat TAT as the priority lever for this city specifically — it is the common driver behind both its complaint volume and its NPS movement.', conf:87, bias:1 },
+  'city-kolkata': { title:'Kolkata', color:'#F5B942', vol:'22h TAT · 63 NPS',
+    ctx:'Second-highest TAT on the chart, trending toward the Delhi NCR pattern.',
+    why:'Staffing here hasn\'t kept pace with recent demand growth — it\'s an earlier-stage version of the same gap that produced Delhi NCR\'s outlier position, not a separate issue.',
+    corr:[['Capacity Gap (FTE)','0.58','Staffing has not kept pace with recent demand growth here.'],
+          ['Complaint Volume × NPS','-0.61','A moderate version of the same TAT-NPS relationship seen in Delhi.']],
+    rec:'Monitor closely — a modest staffing addition now could prevent this city from following Delhi NCR\'s trajectory.', conf:63, bias:1 },
+  'service-north-fcst': { title:'North Region — 30-Day Forecast', color:'#F5B942', vol:'+22%',
+    ctx:'The largest projected call-volume spike of any region over the next 30 days.',
+    why:'A monsoon-linked demand shift is layering on top of technician capacity that\'s already tight from the ongoing installation surge — the forecast compounds an existing gap rather than creating a new one.',
+    corr:[['Weather-Driven Volume Uplift %','0.71','28% of this specific spike is attributed to monsoon-linked demand.'],
+          ['Capacity Gap (FTE)','0.66','Current staffing plan does not yet account for this forecasted spike.']],
+    rec:'Rebalance technician and call-center staffing toward North region 10–14 days ahead of the forecasted spike — the weather signal gives enough lead time to shift capacity before backlog builds.', conf:81, bias:1 },
+};
+
+// Generic fallback — every other cell/bar still opens a real panel,
+// just generated from its own label + value instead of hand-written.
+function genericDrill(key, label, value, color, pillar){
+  const sd = seed(key);
+  const bias = value >= 0 ? (srand(sd)>0.5?1:0) : -1;
+  const corrPairsByPillar = [
+    [['Complaint Volume × NPS','-0.6'],['Channel Mix Consistency','0.5']],
+    [['Weather Correlation Coefficient','0.5'],['Forecast Confidence','0.7']],
+    [['Weather-Driven Volume Uplift %','0.5'],['Capacity Gap (FTE)','0.5']],
+    [['Resolution Effectiveness Index','0.5'],['Recurrence Rate','0.4']],
+    [['Cross-Source Consistency','0.6'],['Lead-Lag (days)','2']],
+  ][pillar];
+  return {
+    title: label, color, vol: value,
+    ctx: (typeof value==='number' ? (Math.abs(value)<=1 ? (value>=0?'+':'')+value.toFixed(2) : value) + ' this period.' : value+' this period.'),
+    why: 'No confirmed single driver at this granular level yet — this pattern typically traces back to the same root causes flagged elsewhere in this section (technician capacity, weather timing, or a specific batch or partner issue).',
+    corr: corrPairsByPillar.map(p=>[p[0], p[1], 'Estimated relationship based on this pillar\'s typical drivers — not yet confirmed at this granular level.']),
+    rec: 'No confirmed single driver at this granularity yet — monitor alongside the hero items in this section for now.',
+    conf: 40 + Math.round(srand(sd+1)*20), bias
+  };
+}
+
+function showDrill(pillar, key){
+  let d = DRILL_HERO[key];
+  if(!d){
+    const label = key.split('-').map(s=>s.charAt(0).toUpperCase()+s.slice(1)).join(' × ');
+    d = genericDrill(key, label, 0, {0:'#7C8CF5',1:'#E1793B',2:'#F5B942',3:'#D9739F',4:'#4FB6E8'}[pillar], pillar);
+  }
+
+  const trendColor = d.color;
+  document.getElementById('drill-modal-card').style.setProperty('--modal-accent', trendColor);
+  const html = `
+    <div class="modal-head">
+      <div>
+        <div class="modal-eyebrow" style="color:${trendColor}">${['Pain Points Summary','Forecast — Weather & Volume','SR Volume — Work Orders','Pain Points Summary','Customer Voice — Sentiment'][pillar]}</div>
+        <div class="modal-title">${d.title}</div>
+      </div>
+      <button class="modal-close" onclick="closeDrill()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="drill-ctx" style="margin-bottom:6px">${d.ctx}</div>
+      <div class="drill-why">
+        <div class="drill-why-lbl">◆ Why this is happening</div>
+        <div class="drill-why-text">${d.why}</div>
+      </div>
+      <div class="drill-mini drill-mini-wide">
+        <div class="drill-mini-label">13-week trend</div>
+        <svg viewBox="0 0 640 130" style="width:100%;height:130px">${sparkSVG(seed(key), 640, 100, d.bias, trendColor)}</svg>
+      </div>
+      <div class="drill-mini-grid" style="grid-template-columns:1fr 1fr">
+        <div class="drill-mini">
+          <div class="drill-mini-label">By channel</div>
+          ${miniBars(seed(key+'ch'), ['Call Center','CRM/Store','Marketplace','Social'], trendColor)}
+        </div>
+        <div class="drill-mini">
+          <div class="drill-mini-label">By lifecycle stage</div>
+          ${miniBars(seed(key+'lc'), ['Usage','Service','Installation','Post-Service'], trendColor)}
+        </div>
+      </div>
+      <table class="corr-table">
+        <tr><th>Also connected to</th><th>Strength</th><th>What it means</th></tr>
+        ${d.corr.map(c=>{
+          const rNum = parseFloat(c[1]);
+          const word = isNaN(rNum) ? c[1] : corrWord(rNum);
+          const cc = isNaN(rNum) ? {bg:'rgba(255,255,255,.06)',fg:'#96A199'} : corrColor(rNum);
+          return '<tr><td>'+c[0]+'</td><td><span class="corr-r" style="background:'+cc.bg+';color:'+cc.fg+'">'+word+'</span></td><td>'+c[2]+'</td></tr>';
+        }).join('')}
+      </table>
+      <div class="drill-rec">
+        <div class="drill-rec-top">
+          <span class="drill-rec-lbl">✦ Recommendation</span>
+          <span class="drill-conf">${confWord(d.conf)}</span>
+        </div>
+        <div class="drill-rec-text">${d.rec}</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-foot-link" style="color:${trendColor}" onclick="closeDrill();goDeep(${pillar},document.querySelector('.vis-section'))">See full analysis for this area →</span>
+    </div>
+  `;
+  document.getElementById('drill-modal-card').innerHTML = html;
+  document.getElementById('drill-modal').classList.add('open');
+}
+function closeDrill(){
+  document.getElementById('drill-modal').classList.remove('open');
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeDrill(); });
+</script>

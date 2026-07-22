@@ -7,6 +7,7 @@ import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from queue import Empty, Queue
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from openpyxl import Workbook, load_workbook
@@ -584,30 +585,70 @@ class ReportWriter:
 # ----------------------------------------------------------------------------
 
 
-def process_url(url, origin_host, destination_cache, verbose=False):
+class ProgressTracker:
+    def __init__(self, total, done_start, run_start):
+        self.total = total
+        self.done = done_start
+        self.run_start = run_start
+        self.lock = threading.Lock()
+
+    def record(self, url, resolved_count, unresolved_count, cache_size, page_elapsed):
+        with self.lock:
+            self.done += 1
+            pct = (self.done / self.total) * 100 if self.total else 100.0
+            elapsed_total = round(time.time() - self.run_start, 1)
+            print(
+                f"  [{self.done}/{self.total} | {pct:.1f}%] {url} -> {resolved_count} resolved, {unresolved_count} unresolved "
+                f"(cache size: {cache_size}) [page: {page_elapsed}s | total elapsed: {elapsed_total}s]"
+            )
+
+
+def process_url_in_browser(browser, url, origin_host, destination_cache, verbose=False):
     page_start = time.time()
     result = {"url": url, "resolved": [], "unresolved": []}
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        page = context.new_page()
-        try:
-            response = page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
-            page.wait_for_timeout(PAGE_LOAD_WAIT_MS)
-            if response is None or response.status != 200:
-                result["unresolved"].append({"source_url": url, "cta_name": "", "reason": "page failed to load"})
-            else:
-                resolver = PageResolver(context, page, url, origin_host, destination_cache=destination_cache, verbose=verbose)
-                resolver.run()
-                result["resolved"] = resolver.resolved
-                result["unresolved"] = resolver.unresolved
-        except Exception as e:
-            result["unresolved"].append({"source_url": url, "cta_name": "", "reason": f"page failed to load: {e}"})
-        finally:
-            context.close()
-            browser.close()
+
+    context = browser.new_context()
+    page = context.new_page()
+    try:
+        response = page.goto(url, timeout=NAV_TIMEOUT_MS, wait_until="domcontentloaded")
+        page.wait_for_timeout(PAGE_LOAD_WAIT_MS)
+        if response is None or response.status != 200:
+            result["unresolved"].append({"source_url": url, "cta_name": "", "reason": "page failed to load"})
+        else:
+            resolver = PageResolver(context, page, url, origin_host, destination_cache=destination_cache, verbose=verbose)
+            resolver.run()
+            result["resolved"] = resolver.resolved
+            result["unresolved"] = resolver.unresolved
+    except Exception as e:
+        result["unresolved"].append({"source_url": url, "cta_name": "", "reason": f"page failed to load: {e}"})
+    finally:
+        context.close()
+
     result["elapsed"] = round(time.time() - page_start, 1)
     return result
+
+
+def worker_loop(url_queue, origin_host, destination_cache, writer, progress, verbose=False):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            while True:
+                try:
+                    url = url_queue.get_nowait()
+                except Empty:
+                    break
+
+                page_result = process_url_in_browser(browser, url, origin_host, destination_cache, verbose=verbose)
+                writer.append_page(page_result["url"], page_result["resolved"], page_result["unresolved"])
+                progress.record(
+                    page_result["url"],
+                    len(page_result["resolved"]),
+                    len(page_result["unresolved"]),
+                    len(destination_cache),
+                    page_result["elapsed"],
+                )
+        finally:
+            browser.close()
 
 
 def _parse_status(value):
@@ -789,17 +830,20 @@ def main():
 
     destination_cache = SharedDestinationCache()
     run_start = time.time()
-    done = len(writer.completed_urls)
+
+    url_queue = Queue()
+    for url in urls:
+        url_queue.put(url)
+
+    progress = ProgressTracker(total=len(all_urls), done_start=len(writer.completed_urls), run_start=run_start)
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_url, url, origin_host, destination_cache, workers == 1) for url in urls]
+        futures = [
+            executor.submit(worker_loop, url_queue, origin_host, destination_cache, writer, progress, workers == 1)
+            for _ in range(workers)
+        ]
         for future in as_completed(futures):
-            page_result = future.result()
-            writer.append_page(page_result["url"], page_result["resolved"], page_result["unresolved"])
-            done += 1
-            pct = (done / len(all_urls)) * 100
-            elapsed_total = round(time.time() - run_start, 1)
-            print(f"  [{done}/{len(all_urls)} | {pct:.1f}%] {page_result['url']} -> {len(page_result['resolved'])} resolved, {len(page_result['unresolved'])} unresolved (cache size: {len(destination_cache)}) [page: {page_result['elapsed']}s | total elapsed: {elapsed_total}s]")
+            future.result()
 
     total_elapsed = time.time() - run_start
     mins, secs = divmod(total_elapsed, 60)
