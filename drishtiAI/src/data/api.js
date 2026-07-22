@@ -59,6 +59,10 @@ export function fetchEarlyWarningFeed() {
   return getJson('/api/dashboard/early-warning-feed') // live rows for SignalLog.jsx
 }
 
+export function fetchRecommendedActions() {
+  return getJson('/api/dashboard/recommended-actions') // live rows for RecommendedActions.jsx
+}
+
 // Generic per-item drill-down detail — same shape regardless of which
 // pillar the highlight belongs to (card_key distinguishes them). Called
 // with the full detailApiPath a bucket/chip already carries, e.g.
