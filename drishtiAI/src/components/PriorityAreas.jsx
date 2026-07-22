@@ -47,12 +47,19 @@ export default function PriorityAreas({ onGoDeep }) {
           <div
             key={row.rank}
             onClick={() => onGoDeep(row.pillarIndex)}
-            className="grid grid-cols-[22px_1fr_auto_auto] items-center gap-3 py-[9px] border-t border-line cursor-pointer group"
+            className="grid grid-cols-[22px_1fr_auto] items-start gap-3 py-[10px] border-t border-line cursor-pointer group"
           >
-            <span className="font-mono text-[11px] font-semibold text-inkfaint">{row.rank}</span>
-            <span className="font-sans text-xs text-ink group-hover:text-teal transition-colors">{row.name}</span>
-            <span className="font-mono text-[11.5px] font-semibold text-inksoft">{row.share}</span>
-            <span className={`font-mono text-[9px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${badgeClass[row.badge]}`}>{row.badgeLabel}</span>
+            <span className="font-mono text-[11px] font-semibold text-inkfaint pt-0.5">{row.rank}</span>
+            <div className="min-w-0">
+              <div className="font-sans text-xs text-ink group-hover:text-teal transition-colors">{row.name}</div>
+              <div className="font-mono text-[10px] text-inkfaint mt-1">{row.subtitle}</div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 font-mono text-[10.5px] text-inksoft">
+                <span>{row.complaintCount} complaints</span>
+                <span>{row.share}</span>
+                <span className={row.growthTone}>{row.momGrowth}</span>
+              </div>
+            </div>
+            <span className={`font-mono text-[9px] font-semibold px-2 py-1 rounded-full whitespace-nowrap mt-0.5 ${badgeClass[row.badge]}`}>{row.badgeLabel}</span>
           </div>
         ))
       )}
