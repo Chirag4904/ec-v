@@ -44,6 +44,34 @@ function toBars(rows, labelKeys, pctKeys) {
     .filter((r) => r.label && Number.isFinite(r.pct))
 }
 
+function humanizeToken(value) {
+  return typeof value === 'string'
+    ? value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : ''
+}
+
+function buildWeatherSummary(history, relationship) {
+  const validHistory = Array.isArray(history)
+    ? history.filter((row) => Number.isFinite(Number(row?.complaintVolumeUpliftPct)))
+    : []
+  const latest = validHistory[validHistory.length - 1] ?? null
+  const strongest = validHistory.reduce((best, row) => (
+    !best || Math.abs(row.complaintVolumeUpliftPct) > Math.abs(best.complaintVolumeUpliftPct) ? row : best
+  ), null)
+  if (!latest && !relationship) return null
+  return {
+    strength: relationship?.correlationStrength ?? null,
+    direction: relationship?.correlationDirection ?? null,
+    lagDays: relationship?.lagDays ?? null,
+    latestPeriod: latest?.periodStart ?? null,
+    latestEvent: humanizeToken(latest?.eventType),
+    latestUpliftPct: firstFinite(latest, 'complaintVolumeUpliftPct'),
+    strongestPeriod: strongest?.periodStart ?? null,
+    strongestEvent: humanizeToken(strongest?.eventType),
+    strongestUpliftPct: firstFinite(strongest, 'complaintVolumeUpliftPct'),
+  }
+}
+
 // Transforms the real /api/dashboard/ai-highlights/{id} response into the
 // shape DrillModal renders. This is real data — actual weekly complaint
 // counts, actual channel/lifecycle/product/region splits — not the seeded-
@@ -53,6 +81,8 @@ export function highlightDetailFromApi(row) {
 
   const metrics = parseJsonField(row.metric_summary_json, {})
   const trend = parseJsonField(row.trend_13_weeks_json, [])
+  const weatherRelationship = parseJsonField(row.weather_relationship_json, null)
+  const weatherHistory = parseJsonField(row.weather_history_json, [])
   const isSentiment = row.card_key === 'SENTIMENT' || row.card_key === 'CUSTOMER_VOICE_SENTIMENT'
   const isSrVolume = row.card_key === 'SR_VOLUME' || row.card_key === 'SR_VOLUME_WORK_ORDERS'
   const isForecast = row.card_key === 'FORECAST'
@@ -65,6 +95,7 @@ export function highlightDetailFromApi(row) {
       : [metrics.productCategory, metrics.issueName ?? metrics.signalType].filter(Boolean).join(' · '),
     why: row.why_this_is_happening,
     trend: trend.map((t) => Number(isSentiment ? t.averageFeedbackScore : isSrVolume ? t.serviceRequestCount : t.complaintCount)).filter(Number.isFinite),
+    trendFormat: isSentiment ? 'score' : 'number',
     trendLabel: isSentiment ? '13-week average score' : isSrVolume ? '13-week service requests' : isForecast ? '13-week complaint volume' : '13-week trend',
     trendWeeks: trend.map((t) => t.weekStart),
     byChannel: toBars(parseJsonField(row.by_channel_json, []), 'channel', isSentiment ? ['dissatisfiedRatePct', 'sharePct'] : isSrVolume ? ['serviceRequestContributionPct', 'sharePct'] : isForecast ? ['contributionPct', 'sharePct'] : 'sharePct'),
@@ -74,6 +105,7 @@ export function highlightDetailFromApi(row) {
     byProductCategory: toBars(parseJsonField(row.by_product_category_json, []), 'productCategory', isForecast ? ['contributionPct', 'sharePct'] : 'sharePct'),
     byRegion: toBars(parseJsonField(row.by_region_json, []), 'region', isForecast ? ['contributionPct', 'sharePct'] : 'sharePct'),
     recommendations: parseJsonField(row.recommendations_json, []),
+    weatherSummary: isForecast ? buildWeatherSummary(weatherHistory, weatherRelationship) : null,
     contextNote: row.context_note,
     trendDirection: row.trend_direction,
     priorityStatus: row.priority_status,

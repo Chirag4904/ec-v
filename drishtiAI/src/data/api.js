@@ -55,6 +55,10 @@ export function fetchForecastAi() {
   return getJson('/api/dashboard/forecast-ai') // single-row AI-generated pillar payload — see forecastAdapter.js
 }
 
+export function fetchEarlyWarningFeed() {
+  return getJson('/api/dashboard/early-warning-feed') // live rows for SignalLog.jsx
+}
+
 // Generic per-item drill-down detail — same shape regardless of which
 // pillar the highlight belongs to (card_key distinguishes them). Called
 // with the full detailApiPath a bucket/chip already carries, e.g.

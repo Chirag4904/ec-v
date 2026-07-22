@@ -5,9 +5,12 @@ import { fetchHighlightDetail } from '../data/api.js'
 import { highlightDetailFromApi } from '../data/highlightAdapter.js'
 import { seriesToPath } from '../data/chartPath.js'
 
-function RealTrendChart({ values, color }) {
+function RealTrendChart({ values, color, format = 'number' }) {
   const safeValues = values.filter(Number.isFinite)
   if (!safeValues.length) return null
+  const fmt = (value) => format === 'score'
+    ? value.toFixed(2)
+    : new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
   const { path, points } = seriesToPath(safeValues, { width: 640, height: 100, padTop: 10, padBottom: 10 })
   return (
     <svg viewBox="0 0 640 120" style={{ width: '100%', height: 130 }}>
@@ -17,7 +20,15 @@ function RealTrendChart({ values, color }) {
       <path d={path} fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       {points.map((p, i) => {
         const isEnd = i === points.length - 1
-        return <circle key={i} cx={p.x} cy={p.y} r={isEnd ? 5 : 3} fill={isEnd ? color : '#0A0E0C'} stroke={color} strokeWidth="2" />
+        const ty = p.y > 40 ? p.y - 10 : p.y + 16
+        return (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={isEnd ? 5 : 3} fill={isEnd ? color : '#0A0E0C'} stroke={color} strokeWidth="2" />
+            <text x={p.x} y={ty} fontFamily="IBM Plex Mono" fontSize="9" fontWeight={isEnd ? 700 : 500} fill={isEnd ? color : '#96A199'} textAnchor="middle">
+              {fmt(safeValues[i])}
+            </text>
+          </g>
+        )
       })}
     </svg>
   )
@@ -174,7 +185,7 @@ export default function DrillModal({ open, pillarIndex, drillKey, detailApiPath,
               <div className="bg-panel2 border border-line rounded-[10px] p-4 mb-3.5">
                 <div className="font-mono text-[10.5px] font-semibold uppercase tracking-wide text-inkfaint mb-3">{realData?.trendLabel ?? '13-week trend'}</div>
                 {usingReal
-                  ? <RealTrendChart values={realData.trend} color={color} />
+                  ? <RealTrendChart values={realData.trend} color={color} format={realData.trendFormat} />
                   : <SparkChart dataKey={drillKey} bias={legacy.bias} color={color} />}
               </div>
 
@@ -185,6 +196,17 @@ export default function DrillModal({ open, pillarIndex, drillKey, detailApiPath,
                       {realData.secondaryMetrics.map((metric) => (
                         <MetricTile key={metric.label} label={metric.label} value={formatMetricValue(metric)} tone={metric.tone} />
                       ))}
+                    </div>
+                  )}
+                  {realData.weatherSummary && (
+                    <div className="bg-panel2 border border-line rounded-[10px] p-4 mb-3.5">
+                      <div className="font-mono text-[10.5px] font-semibold uppercase tracking-wide text-inkfaint mb-3">Weather context</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-[11.5px] text-inksoft">
+                        <div>Correlation · <span className="text-ink">{[realData.weatherSummary.strength, realData.weatherSummary.direction].filter(Boolean).join(' ') || '—'}</span></div>
+                        <div>Lag · <span className="text-ink">{realData.weatherSummary.lagDays != null ? `${realData.weatherSummary.lagDays} day` : '—'}</span></div>
+                        <div>Latest proxy month · <span className="text-ink">{[realData.weatherSummary.latestPeriod?.slice(0, 7), realData.weatherSummary.latestEvent].filter(Boolean).join(' · ') || '—'}</span></div>
+                        <div>Strongest uplift · <span className="text-ink">{realData.weatherSummary.strongestEvent ? `${realData.weatherSummary.strongestEvent} · ${formatPct(realData.weatherSummary.strongestUpliftPct)}` : '—'}</span></div>
+                      </div>
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-4">

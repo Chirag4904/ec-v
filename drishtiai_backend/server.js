@@ -20,6 +20,8 @@ const {
   SR_VOLUME_AI_VIEW,
   FORECAST_AI_VIEW,
   AI_HIGHLIGHTS_VIEW,
+  RECOMMENDED_ACTIONS_VIEW,
+  EARLY_WARNING_FEED_VIEW,
 } = process.env;
 
 function assertConfigured() {
@@ -326,6 +328,44 @@ app.get("/api/dashboard/forecast-ai", async (req, res) => {
   }
 });
 
+app.get("/api/dashboard/recommended-actions", async (req, res) => {
+  try {
+    const rows = await fetchView(RECOMMENDED_ACTIONS_VIEW);
+
+    return res.json({
+      success: true,
+      count: rows.length,
+      data: rows,
+    });
+  } catch (error) {
+    console.error("Recommended Actions request failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/dashboard/early-warning-feed", async (req, res) => {
+  try {
+    const rows = await fetchView(EARLY_WARNING_FEED_VIEW);
+
+    return res.json({
+      success: true,
+      count: rows.length,
+      data: rows,
+    });
+  } catch (error) {
+    console.error("Early Warning Feed request failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 // Generic per-item drill-down detail — same shape regardless of which
 // pillar the highlight belongs to (the row's own card_key field says
 // which one). This is what each bucket/chip's detailApiPath points at,
@@ -376,5 +416,7 @@ app.listen(PORT, () => {
   console.log("GET /api/dashboard/sentiment-ai");
   console.log("GET /api/dashboard/sr-volume-ai");
   console.log("GET /api/dashboard/forecast-ai");
+  console.log("GET /api/dashboard/recommended-actions");
+  console.log("GET /api/dashboard/early-warning-feed");
   console.log("GET /api/dashboard/ai-highlights/:highlightId");
 });
