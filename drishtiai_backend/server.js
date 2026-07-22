@@ -192,10 +192,9 @@ app.get("/health", (req, res) => {
 app.get("/api/dashboard/top-kpis", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    const productCategory = "ALL";
-    const region = "ALL";
-    const view = "havellslakehouse_dev.bronze.eucloid_v2_vw_ui_top_kpis";
-    const rows = await fetchView(view);
+    const productCategory = req.query.product_category || "ALL";
+    const region = req.query.region || "ALL";
+    const rows = await fetchFilteredView(TOP_KPI_VIEW, productCategory, region);
 
     return res.json({
       success: true,
